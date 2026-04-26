@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.stanza.app",
+  "asar": false,
+  "forceCodeSigning": false,
+  "directories": {
+    "output": "release/${version}"
+  },
+  "files": [
+    "dist-electron",
+    "dist",
+    ".env",
+    "node_modules/@prisma/**/*",
+    "node_modules/.prisma/**/*",
+    "!node_modules/.prisma/client/libquery_engine-*",
+    "!node_modules/.prisma/client/query_engine-*"
+  ],
+  "extraFiles": [
+    {
+      "from": "node_modules/.prisma",
+      "to": "resources/app/node_modules/.prisma",
+      "filter": ["**/*"]
+    }
+  ],
+  "extraResources": [
+    {
+      "from": "resources/yt-dlp.exe",
+      "to": "yt-dlp.exe",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/yt-dlp_macos",
+      "to": "yt-dlp_macos",
+      "filter": ["**/*"]
+    }
+  ],
+  "mac": {
+    "artifactName": "${productName}_${version}_mac.${ext}",
+    "target": [
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "build/icon.png"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "build/icon.png",
+    "artifactName": "${productName}_${version}.${ext}",
+    "sign": null,
+    "signAndEditExecutable": false,
+    "signDlls": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "publish": {
+    "provider": "generic",
+    "channel": "latest",
+    "url": "https://github.com/electron-vite/electron-vite-react/releases/download/v0.9.9/"
+  }
+}

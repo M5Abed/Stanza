@@ -1,0 +1,76 @@
+// VibeStream — local catalog, playlists, manual lyrics (YouTube ID is canonical).
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Canonical track row keyed by YouTube video ID (merge duplicates on upsert).
+model Song {
+  youtubeId       String   @id
+  title           String
+  artist          String?
+  album           String?
+  thumbnailUrl    String?
+  durationSeconds Int?
+  downloadPath    String?
+  isDownloaded    Boolean  @default(false)
+  cachePath       String?
+  lastPlayedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  manualLyrics    ManualLyrics?
+  playlistTracks  PlaylistTrack[]
+}
+
+/// User-authored synced or plain lyrics stored as raw LRC text (Level 1 for LyricsAggregator).
+model ManualLyrics {
+  youtubeId String   @id
+  lrcRaw    String
+  updatedAt DateTime @updatedAt
+
+  song Song @relation(fields: [youtubeId], references: [youtubeId], onDelete: Cascade)
+}
+
+/// Ordered playlist; same `Song` may appear multiple times via distinct `PlaylistTrack` rows.
+model Playlist {
+  id        String   @id @default(cuid())
+  name      String
+  coverUrl  String?
+  sortOrder Int      @default(0)
+  offlineEnabled Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tracks PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  playlistId String
+  youtubeId  String
+  position   Int
+  addedAt    DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song     Song     @relation(fields: [youtubeId], references: [youtubeId], onDelete: Cascade)
+
+  @@unique([playlistId, position])
+  @@index([playlistId])
+  @@index([youtubeId])
+}
+
+/// Substrings removed (case-insensitive) when normalizing titles for LRCLIB / future APIs.
+model TitleCleaningTerm {
+  id        String   @id @default(cuid())
+  term      String
+  sortOrder Int      @default(0)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+}

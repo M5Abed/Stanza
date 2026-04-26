@@ -1,0 +1,43 @@
+First -> Make sure that the app appears on discord with name Stanza Not VibeStream
+Second -> Make the playnext songs always simmilar to the previous song , if the song is rap, the next song will be rap, if the song is rock, the next song will be rock, if the song is pop, the next song will be pop, etc. make the app understand the type of the song and play the next song as similar as possible to the previous song.
+Third -> Add download button to download songs and save them locally in the app folder to make them accessible offline, also make me able to turn on offline button on a playlist and the app will download the entire playlist and any new songs that added to it.
+
+Stanza - Suggested Features Roadmap
+=======================================
+
+1. TRUE OFFLINE MODE (DOWNLOADS)
+   - Description: Use the bundled yt-dlp.exe to save songs locally.
+   - Benefit: Listen to music without an internet connection.
+   - Implementation: Add a "Download" button to song menus and save to a local folder.
+
+2. AMBIENT UI (DYNAMIC COLORS)
+   - Description: UI background and accents change color based on the current album art.
+   - Benefit: Premium, immersive aesthetic similar to Apple Music/Spotify.
+   - Implementation: Use ColorThief to extract dominant colors from images in the frontend.
+
+3. AUDIO VISUALIZER
+   - Description: Real-time visual representation of the audio frequencies.
+   - Benefit: High "wow" factor and visual engagement.
+   - Implementation: Web Audio API (AnalyserNode) + Canvas/SVG in the renderer.
+
+4. AUTO-UPDATING ENGINE
+   - Description: Automatically check for and download yt-dlp updates.
+   - Benefit: Ensures the app never stops working when YouTube changes their site code.
+   - Implementation: Background task running "yt-dlp.exe -U" periodically.
+
+5. MINI-PLAYER / COMPACT MODE
+   - Description: A small, "Always on Top" window with minimal controls.
+   - Benefit: Control music while working in other applications without the full UI.
+   - Implementation: Toggle window size and "alwaysOnTop" property in Electron.
+
+6. LAST.FM SCROBBLING
+   - Description: Sync listening history to a user's Last.fm account.
+   - Benefit: Users can track their long-term listening statistics.
+   - Implementation: Send a POST request to Last.fm API when a song reaches 50% completion.
+
+7. Add a button in lyrics window that make the user able to Add and sync lyrics manually if it's not found automatically or found without syns, also make me able to edit the existing lyrics. and all be save locally.
+   - Add a new window like musixmatch that shows the lyrics in real time and the user can edit them and save them locally.
+   - the window that shows the lyrics should be like a separate window not like a part of the player window so it can be always on top.
+   - The window should have the button to make sync easier like back 0.25 sec and next 0.25 sec to make it easier to sync the lyrics with the song.
+   - the syced file should be saved locally in the app folder with the same name of the song and .lrc extention so it can be played with the song automatically when the song is played.
+   - Make the priority of the lyrics to check for the locally saved lyrics first, then check for the automatically found lyrics
