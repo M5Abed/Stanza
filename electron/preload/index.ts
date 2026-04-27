@@ -102,4 +102,9 @@ contextBridge.exposeInMainWorld('vibestream', {
   },
   // Mini-player
   setMiniPlayer: (enabled: boolean) => invoke<void>(IpcChannels.setMiniPlayer, enabled),
+  // Lyrics sharing
+  exportLyrics: (lrcRaw: string, suggestedName: string) =>
+    invoke<{ ok: boolean; path?: string }>(IpcChannels.lyricsExport, { lrcRaw, suggestedName }),
+  importLyrics: () =>
+    invoke<{ ok: boolean; lrcRaw: string | null }>(IpcChannels.lyricsImport),
 })

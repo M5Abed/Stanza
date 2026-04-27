@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, nativeImage, app } from 'electron'
+import { ipcMain, BrowserWindow, nativeImage, app, dialog } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import {
   CleaningTermDeleteSchema,
@@ -17,7 +17,7 @@ import {
 import { getPrisma } from './database'
 import { getInnertube, resetInnertube } from './innertube'
 import { aggregateLyrics } from './lyrics-aggregator'
-import { spotifySearchMetadata, spotifyFetchCoverUrl } from './spotify-metadata'
+import { spotifySearchMetadata, spotifyFetchCoverUrl, spotifyFetchArtistImage } from './spotify-metadata'
 import { playbackUrlForYoutubeId } from './register-protocol'
 import { downloadSong, deleteDownload, isDownloaded, broadcastDownloadProgress } from './download-manager'
 function getArtistName(tItem: any): string {
@@ -56,6 +56,8 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IpcChannels.deleteSong)
   ipcMain.removeHandler(IpcChannels.isDownloaded)
   ipcMain.removeHandler(IpcChannels.playlistSetOffline)
+  ipcMain.removeHandler(IpcChannels.lyricsExport)
+  ipcMain.removeHandler(IpcChannels.lyricsImport)
 
   function upscaleGoogleUrl(url: string | null | undefined): string | null {
     if (!url) return null
@@ -539,14 +541,18 @@ export function registerIpcHandlers(): void {
       const artist = await yt.music.getArtist(artistId)
       
       const headerObj = (artist as any).header as any
+      const artistName = headerObj?.title?.text || (artist as any).name || 'Unknown'
       const details = {
         artistId,
-        name: headerObj?.title?.text || (artist as any).name || 'Unknown',
+        name: artistName,
         thumbnailUrl: getBestYtThumbnail(headerObj?.thumbnails || (artist as any).thumbnails) || null,
         subscribers: headerObj?.subscribers?.text || null,
         topSongs: [] as any[],
         allSongsEndpoint: null as any,
       }
+
+      // Try to get a high-res artist image from Spotify (non-blocking)
+      const spotifyImagePromise = spotifyFetchArtistImage(artistName)
 
       // Instead of generic search, extract "Top songs" and "Albums"/"Singles" from official artist sections
       const topSongsRaw: any[] = []
@@ -641,6 +647,12 @@ export function registerIpcHandlers(): void {
       
       ;(details as any).albums = albums
       ;(details as any).singles = singles
+
+      // Upgrade thumbnail with Spotify image if available
+      try {
+        const spImage = await spotifyImagePromise
+        if (spImage) details.thumbnailUrl = spImage
+      } catch { /* Spotify unavailable — keep YT thumbnail */ }
       
       return details
     } catch (err) {
@@ -650,18 +662,71 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IpcChannels.albumGetDetails, async (_evt, raw: unknown) => {
-    const { albumId } = raw as { albumId: string }
+    const { albumId: queryId } = raw as { albumId: string }
     try {
       const yt = await getInnertube()
+      let albumId = queryId
+
+      // If not a YT Music browse ID, resolve by searching
+      if (!albumId.startsWith('MPRE')) {
+        let browseId: string | null = null
+
+        // Helper to extract browse ID from search results
+        const extractBrowseId = (search: any): string | null => {
+          const contents = search.contents as any[]
+          if (!contents) return null
+          for (const section of contents) {
+            const items = section.contents || []
+            for (const item of items) {
+              const id = item?.endpoint?.payload?.browseId || item?.id
+              if (id && typeof id === 'string' && id.startsWith('MPRE')) return id
+            }
+          }
+          return null
+        }
+
+        // Try with full query (artist + album)
+        try {
+          const search = await yt.music.search(queryId, { type: 'album' })
+          browseId = extractBrowseId(search)
+        } catch (e) {
+          console.warn('[vs:album] search failed for:', queryId, e)
+        }
+
+        if (!browseId) {
+          throw new Error(`Could not find an album matching "${queryId}"`)
+        }
+        albumId = browseId
+      }
+
       const album = await yt.music.getAlbum(albumId)
       const header = (album as any).header
-      
+
+      // Try multiple paths for album artwork
+      const albumThumb =
+        getBestYtThumbnail(header?.thumbnail?.contents) ||
+        getBestYtThumbnail(header?.thumbnail) ||
+        getBestYtThumbnail(header?.thumbnails) ||
+        getBestYtThumbnail((album as any).background?.thumbnails) ||
+        getBestYtThumbnail((album as any).thumbnails) ||
+        null
+
+      const albumTitle = header?.title?.text || (album as any).title || 'Unknown Album'
+      const albumArtist = getArtistName(header || album)
+
+      // Try Spotify for a high-res permanent cover
+      let finalThumb = albumThumb
+      try {
+        const spCover = await spotifyFetchCoverUrl(albumTitle, albumArtist)
+        if (spCover) finalThumb = spCover
+      } catch { /* Spotify unavailable */ }
+
       return {
         id: albumId,
-        title: header?.title?.text || (album as any).title || 'Unknown Album',
-        artist: getArtistName(header || album),
+        title: albumTitle,
+        artist: albumArtist,
         year: header?.subtitle?.text || header?.year || '',
-        thumbnailUrl: getBestYtThumbnail(header?.thumbnails || (album as any).thumbnails) || null,
+        thumbnailUrl: finalThumb,
         tracks: (album.contents || []).map((tItem: any, i: number) => {
           let yid = tItem.videoId || tItem.id || tItem.endpoint?.payload?.videoId || tItem.play_endpoint?.payload?.videoId;
           if (!yid && tItem.flex_columns?.[0]?.title?.runs?.[0]?.endpoint?.payload?.videoId) {
@@ -757,5 +822,43 @@ export function registerIpcHandlers(): void {
       }
     }
     return { ok: true }
+  })
+
+  // === Lyrics Export / Import ===
+
+  ipcMain.handle(IpcChannels.lyricsExport, async (_evt, raw: unknown) => {
+    const { lrcRaw, suggestedName } = raw as { lrcRaw: string; suggestedName: string }
+    const win = BrowserWindow.getFocusedWindow() ?? undefined
+    const result = await dialog.showSaveDialog({
+      ...(win ? { window: win } : {}),
+      title: 'Export Lyrics',
+      defaultPath: suggestedName,
+      filters: [
+        { name: 'LRC Lyrics', extensions: ['lrc'] },
+        { name: 'Text File', extensions: ['txt'] },
+      ],
+    } as any)
+    if (result.canceled || !result.filePath) return { ok: false }
+    const fs = await import('node:fs')
+    fs.writeFileSync(result.filePath, lrcRaw, 'utf-8')
+    return { ok: true, path: result.filePath }
+  })
+
+  ipcMain.handle(IpcChannels.lyricsImport, async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? undefined
+    const result = await dialog.showOpenDialog({
+      ...(win ? { window: win } : {}),
+      title: 'Import Lyrics',
+      filters: [
+        { name: 'LRC Lyrics', extensions: ['lrc'] },
+        { name: 'Text File', extensions: ['txt'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    } as any)
+    if (result.canceled || result.filePaths.length === 0) return { ok: false, lrcRaw: null }
+    const fs = await import('node:fs')
+    const lrcRaw = fs.readFileSync(result.filePaths[0], 'utf-8')
+    return { ok: true, lrcRaw }
   })
 }

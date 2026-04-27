@@ -34,4 +34,7 @@ export const IpcChannels = {
   setMiniPlayer: 'vs:window:mini-player',
   /** Lyrics editor */
   openLyricsEditor: 'vs:lyrics:open-editor',
+  /** Lyrics sharing / file I/O */
+  lyricsExport: 'vs:lyrics:export',
+  lyricsImport: 'vs:lyrics:import',
 } as const

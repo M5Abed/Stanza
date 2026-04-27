@@ -194,3 +194,37 @@ export async function spotifyFetchCoverUrl(title: string, artist: string): Promi
     return null
   }
 }
+
+/**
+ * Fetch a high-res artist profile image from Spotify.
+ * Returns the best image URL (i.scdn.co, permanent, high-res) or null.
+ */
+export async function spotifyFetchArtistImage(artistName: string): Promise<string | null> {
+  try {
+    const creds = getCredentials()
+    if (!creds) return null
+
+    const token = await getAccessToken()
+    if (!token) return null
+
+    const url = new URL('https://api.spotify.com/v1/search')
+    url.searchParams.set('q', artistName)
+    url.searchParams.set('type', 'artist')
+    url.searchParams.set('limit', '1')
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+
+    const data = (await res.json()) as {
+      artists?: { items?: { name: string; images?: { url: string; height?: number | null }[] }[] }
+    }
+
+    const artist = data.artists?.items?.[0]
+    if (!artist) return null
+    return bestImageUrl(artist.images)
+  } catch {
+    return null
+  }
+}

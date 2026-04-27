@@ -61,15 +61,16 @@ function fmtDuration(ms: number): string {
 }
 
 export function SearchView() {
-  const [q, setQ] = useState('')
-  const [debounced, setDebounced] = useState('')
-  const [tracks, setTracks] = useState<SpTrack[]>([])
-  const [artists, setArtists] = useState<SpArtist[]>([])
+  const { history, lastQuery, lastTracks, lastArtists, addSearchTerm, removeSearchTerm, clearHistory, setLastResults } = useSearchStore()
+
+  const [q, setQ] = useState(lastQuery)
+  const [debounced, setDebounced] = useState(lastQuery)
+  const [tracks, setTracks] = useState<SpTrack[]>(lastTracks as SpTrack[])
+  const [artists, setArtists] = useState<SpArtist[]>(lastArtists as SpArtist[])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
 
-  const { history, addSearchTerm, removeSearchTerm, clearHistory } = useSearchStore()
   const setActiveView = useUIStore((s) => s.setActiveView)
   const playTrackNow = usePlayerStore((s) => s.playTrackNow)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
@@ -226,6 +227,13 @@ export function SearchView() {
     void runSearch(debounced)
   }, [debounced, runSearch])
 
+  // Cache results to store so they survive navigation
+  useEffect(() => {
+    if (!loading) {
+      setLastResults(q.trim(), tracks, artists)
+    }
+  }, [tracks, artists, loading])
+
   return (
     <main className='flex w-full flex-col'>
       {/* Search Bar */}
@@ -309,7 +317,8 @@ export function SearchView() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.015 }}
-                    className='group relative flex items-center justify-between rounded-md px-4 py-2 hover:bg-[#ffffff1a] transition-colors gap-4'
+                    onClick={() => resolveAndPlay(t, 'play')}
+                    className='group relative flex items-center justify-between rounded-md px-4 py-2 hover:bg-[#ffffff1a] transition-colors gap-4 cursor-pointer'
                   >
                     <div className='flex items-center gap-4 flex-1 min-w-0'>
                       <div className='relative h-[40px] w-[40px] shrink-0 overflow-hidden shadow bg-[#282828] rounded'>
@@ -323,7 +332,7 @@ export function SearchView() {
                         
                         {/* Play overlay on hover */}
                         <button 
-                          onClick={() => resolveAndPlay(t, 'play')}
+                          onClick={(e) => { e.stopPropagation(); resolveAndPlay(t, 'play') }}
                           disabled={isResolving}
                           className='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100'
                         >
@@ -335,11 +344,34 @@ export function SearchView() {
                         </button>
                       </div>
                       <div className='flex flex-col min-w-0 flex-1 justify-center'>
-                        <span className='truncate text-[16px] font-normal text-white group-hover:underline cursor-pointer'>{t.name}</span>
-                        <span className='truncate text-[14px] text-[#a7a7a7] hover:underline cursor-pointer group-hover:text-white transition-colors'>
+                        <span
+                          className='inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-normal text-white'
+                        >{t.name}</span>
+                        <span className='truncate text-[14px] text-[#a7a7a7] transition-colors'>
                           {t.explicit && <span className='mr-1 inline-flex items-center rounded bg-[#a7a7a7] px-1 text-[9px] font-bold text-black leading-tight'>E</span>}
-                          {t.artists}
-                          {t.album ? ` · ${t.album}` : ''}
+                          <span
+                            className='hover:underline hover:text-white cursor-pointer'
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const artistName = t.artists.split(',')[0].trim()
+                              setActiveView(`artist-${artistName}` as any)
+                            }}
+                            title={`Go to artist: ${t.artists}`}
+                          >{t.artists}</span>
+                          {t.album ? (
+                            <>
+                              {' · '}
+                              <span
+                                className='hover:underline hover:text-white cursor-pointer'
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const query = `${t.artists} ${t.album}`
+                                  setActiveView(`album-${query}` as any)
+                                }}
+                                title={`Go to album: ${t.album}`}
+                              >{t.album}</span>
+                            </>
+                          ) : ''}
                         </span>
                       </div>
                     </div>
@@ -350,7 +382,7 @@ export function SearchView() {
                       <div className='flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity'>
                         <button
                           type='button'
-                          onClick={() => resolveAndPlay(t, 'queue')}
+                          onClick={(e) => { e.stopPropagation(); resolveAndPlay(t, 'queue') }}
                           disabled={isResolving}
                           className='text-[#a7a7a7] hover:text-white transition-colors'
                           title='Add to queue'

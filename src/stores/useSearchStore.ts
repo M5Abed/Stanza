@@ -3,15 +3,23 @@ import { persist } from 'zustand/middleware'
 
 interface SearchState {
   history: string[]
+  /** Cached last search so results survive navigation */
+  lastQuery: string
+  lastTracks: any[]
+  lastArtists: any[]
   addSearchTerm: (term: string) => void
   removeSearchTerm: (term: string) => void
   clearHistory: () => void
+  setLastResults: (query: string, tracks: any[], artists: any[]) => void
 }
 
 export const useSearchStore = create<SearchState>()(
   persist(
     (set) => ({
       history: [],
+      lastQuery: '',
+      lastTracks: [],
+      lastArtists: [],
       addSearchTerm: (term) =>
         set((state) => {
           const trimmed = term.trim()
@@ -28,9 +36,14 @@ export const useSearchStore = create<SearchState>()(
           history: state.history.filter((t) => t.toLowerCase() !== term.toLowerCase())
         })),
       clearHistory: () => set({ history: [] }),
+      setLastResults: (query, tracks, artists) =>
+        set({ lastQuery: query, lastTracks: tracks, lastArtists: artists }),
     }),
     {
       name: 'vibestream-search-history',
+      partialize: (state) => ({
+        history: state.history,
+      }),
     }
   )
 )

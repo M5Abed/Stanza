@@ -80,6 +80,9 @@ export interface VibestreamPreload {
   onDownloadProgress: (callback: (data: { youtubeId: string; progress: number }) => void) => () => void
   // Mini-player
   setMiniPlayer?: (enabled: boolean) => Promise<void>
+  // Lyrics sharing
+  exportLyrics: (lrcRaw: string, suggestedName: string) => Promise<{ ok: boolean; path?: string }>
+  importLyrics: () => Promise<{ ok: boolean; lrcRaw: string | null }>
 }
 
 export {}

@@ -28,6 +28,41 @@ import { ArtistView } from '@/components/artist/ArtistView'
 import { ArtistAllSongsView } from '@/components/artist/ArtistAllSongsView'
 import { AlbumView } from '@/components/album/AlbumView'
 
+function NavHeader() {
+  const canGoBack = useUIStore((s) => s.history.length > 0)
+  const canGoForward = useUIStore((s) => s.forwardStack.length > 0)
+  const goBack = useUIStore((s) => s.goBack)
+  const goForward = useUIStore((s) => s.goForward)
+
+  return (
+    <header className='sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-3xl bg-theme-elevated/40 px-8 py-5 backdrop-blur-md border-b border-white/5'>
+      <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-1'>
+          <button
+            onClick={goBack}
+            disabled={!canGoBack}
+            className='flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-all disabled:opacity-30 disabled:cursor-default'
+            title='Go back'
+          >
+            <ChevronLeft className='h-5 w-5' />
+          </button>
+          <button
+            onClick={goForward}
+            disabled={!canGoForward}
+            className='flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-all disabled:opacity-30 disabled:cursor-default'
+            title='Go forward'
+          >
+            <ChevronRight className='h-5 w-5' />
+          </button>
+        </div>
+        <h1 className='text-2xl font-bold tracking-tight text-white drop-shadow-md'>
+          Stanza
+        </h1>
+      </div>
+    </header>
+  )
+}
+
 function MainContent() {
   const activeView = useUIStore((s) => s.activeView)
   if (activeView === 'home') return <HomeView />
@@ -68,33 +103,8 @@ export default function App() {
         
         {/* Main Content Area */}
         <main className='flex flex-1 flex-col overflow-y-auto rounded-3xl bg-theme-surface/70 backdrop-blur-2xl shadow-xl border border-white/5'>
-          <header className='sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-3xl bg-theme-elevated/40 px-8 py-5 backdrop-blur-md border-b border-white/5'>
-            <div className='flex items-center gap-3'>
-              {/* Back / Forward navigation */}
-              <div className='flex items-center gap-1'>
-                <button
-                  onClick={() => useUIStore.getState().goBack()}
-                  disabled={!useUIStore.getState().canGoBack()}
-                  className='flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-all disabled:opacity-30 disabled:cursor-default'
-                  title='Go back'
-                >
-                  <ChevronLeft className='h-5 w-5' />
-                </button>
-                <button
-                  onClick={() => useUIStore.getState().goForward()}
-                  disabled={!useUIStore.getState().canGoForward()}
-                  className='flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-all disabled:opacity-30 disabled:cursor-default'
-                  title='Go forward'
-                >
-                  <ChevronRight className='h-5 w-5' />
-                </button>
-              </div>
-              <h1 className='text-2xl font-bold tracking-tight text-white drop-shadow-md'>
-                Stanza
-              </h1>
-            </div>
-            {/* Can add User Profile or specific search input here later */}
-          </header>
+          <NavHeader />
+
 
           <div className='flex-1 p-6'>
             <MainContent />

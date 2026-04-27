@@ -236,8 +236,9 @@ export const usePlayerStore = create<PlayerState>()(
         return
       }
       
+      // Always auto-play related songs when the queue ends
       const radioState = useRadioStore.getState()
-      if (radioState.isRadioEnabled && radioState.suggestions.length > 0) {
+      if (radioState.suggestions.length > 0) {
         const nextRadioTrack = radioState.suggestions[0]
         get().playTrackNow(nextRadioTrack)
         // Chain: fetch new genre-similar recommendations for the radio track

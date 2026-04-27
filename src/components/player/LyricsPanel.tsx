@@ -19,6 +19,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
+  Share2,
+  Download,
+  Upload,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { motion } from 'framer-motion'
@@ -331,6 +336,26 @@ export function LyricsPanel() {
   const [editorTrackId, setEditorTrackId] = useState<string | null>(null) // locked to the song being edited
   const editorScrollRef = useRef<HTMLDivElement>(null)
 
+  // Share dropdown state
+  const [showShareMenu, setShowShareMenu] = useState(false)
+  const [copiedFeedback, setCopiedFeedback] = useState(false)
+  const shareMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close share menu on outside click
+  useEffect(() => {
+    if (!showShareMenu) return
+    const handler = (e: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
+        setShowShareMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showShareMenu])
+
+
+
+
   /** Parse LRC text into structured lines */
   const parseLrcToLines = (lrc: string): { time: number; text: string }[] => {
     return lrc.split('\n').filter(l => l.trim()).map(line => {
@@ -461,6 +486,51 @@ export function LyricsPanel() {
       void fetchLyrics()
     }
   }, [visible, current?.youtubeId, fetchLyrics])
+
+  /** Copy LRC text to clipboard */
+  const handleCopyLyrics = useCallback(async () => {
+    const lrc = lyricsData ? lyricsData.map(l => {
+      if (l.time >= 0) {
+        const m = Math.floor(l.time / 60).toString().padStart(2, '0')
+        const s = (l.time % 60).toFixed(2).padStart(5, '0')
+        return `[${m}:${s}]${l.text}`
+      }
+      return l.text
+    }).join('\n') : ''
+    if (!lrc) return
+    await navigator.clipboard.writeText(lrc)
+    setCopiedFeedback(true)
+    setTimeout(() => setCopiedFeedback(false), 2000)
+    setShowShareMenu(false)
+  }, [lyricsData])
+
+  /** Export lyrics as .lrc file */
+  const handleExportLyrics = useCallback(async () => {
+    const lrc = lyricsData ? lyricsData.map(l => {
+      if (l.time >= 0) {
+        const m = Math.floor(l.time / 60).toString().padStart(2, '0')
+        const s = (l.time % 60).toFixed(2).padStart(5, '0')
+        return `[${m}:${s}]${l.text}`
+      }
+      return l.text
+    }).join('\n') : ''
+    if (!lrc || !window.vibestream) return
+    const name = `${current?.artist ?? 'Unknown'} - ${current?.title ?? 'Unknown'}.lrc`
+    await window.vibestream.exportLyrics(lrc, name)
+    setShowShareMenu(false)
+  }, [lyricsData, current?.artist, current?.title])
+
+  /** Import lyrics from .lrc file */
+  const handleImportLyrics = useCallback(async () => {
+    if (!window.vibestream || !current) return
+    const result = await window.vibestream.importLyrics()
+    if (result.ok && result.lrcRaw) {
+      // Save to DB
+      await window.vibestream.saveManualLyrics(current.youtubeId, result.lrcRaw)
+      // Refresh lyrics
+      fetchLyrics()
+    }
+  }, [current, fetchLyrics])
 
   // Handle OS Fullscreen Request
   useEffect(() => {
@@ -630,29 +700,75 @@ export function LyricsPanel() {
             <div className='flex h-full w-full flex-col items-center justify-center gap-6'>
               <Mic2 className='h-24 w-24 text-white/20' />
               <span className='text-3xl font-bold text-[#b3b3b3]'>No lyrics found</span>
-              <button
-                onClick={() => { setEditorTrackId(current?.youtubeId ?? null); setIsEditing(true); setEditorLines([{ time: positionSec, text: '' }]); setActiveLineIdx(0) }}
-                className='mt-4 flex items-center gap-2 px-6 py-3 bg-theme-accent rounded-full text-white font-semibold hover:scale-105 transition-transform'
-              >
-                <Plus className='h-5 w-5' /> Add Lyrics
-              </button>
+              <div className='mt-4 flex items-center gap-3'>
+                <button
+                  onClick={() => { setEditorTrackId(current?.youtubeId ?? null); setIsEditing(true); setEditorLines([{ time: positionSec, text: '' }]); setActiveLineIdx(0) }}
+                  className='flex items-center gap-2 px-6 py-3 bg-theme-accent rounded-full text-white font-semibold hover:scale-105 transition-transform'
+                >
+                  <Plus className='h-5 w-5' /> Add Lyrics
+                </button>
+                <button
+                  onClick={handleImportLyrics}
+                  className='flex items-center gap-2 px-6 py-3 bg-white/10 rounded-full text-white/80 font-semibold hover:bg-white/20 hover:text-white hover:scale-105 transition-all'
+                >
+                  <Upload className='h-5 w-5' /> Import .lrc
+                </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Edit Lyrics Button (top-right of lyrics area) */}
         {!isEditing && lyricsData && (
-          <button
-            onClick={() => {
-              setEditorTrackId(current?.youtubeId ?? null)
-              setIsEditing(true)
-              setEditorLines(lyricsData.map(l => ({ ...l })))
-              setActiveLineIdx(0)
-            }}
-            className='absolute top-8 right-24 z-20 flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-all text-sm font-medium'
-          >
-            <Edit2 className='h-4 w-4' /> Edit
-          </button>
+          <div className='absolute top-8 right-24 z-20 flex items-center gap-2'>
+            {/* Share dropdown */}
+            <div className='relative' ref={shareMenuRef}>
+              <button
+                onClick={() => setShowShareMenu(!showShareMenu)}
+                className='flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-all text-sm font-medium'
+              >
+                <Share2 className='h-4 w-4' /> Share
+              </button>
+              {showShareMenu && (
+                <div className='absolute top-full right-0 mt-2 w-52 rounded-xl bg-[#282828] border border-white/10 shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200'>
+                  <button
+                    onClick={handleCopyLyrics}
+                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                  >
+                    {copiedFeedback ? <Check className='h-4 w-4 text-green-400' /> : <Copy className='h-4 w-4' />}
+                    {copiedFeedback ? 'Copied!' : 'Copy LRC Text'}
+                  </button>
+                  <button
+                    onClick={handleExportLyrics}
+                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                  >
+                    <Download className='h-4 w-4' />
+                    Export as .lrc File
+                  </button>
+                  <div className='border-t border-white/5' />
+                  <button
+                    onClick={handleImportLyrics}
+                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                  >
+                    <Upload className='h-4 w-4' />
+                    Import .lrc File
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Edit button */}
+            <button
+              onClick={() => {
+                setEditorTrackId(current?.youtubeId ?? null)
+                setIsEditing(true)
+                setEditorLines(lyricsData.map(l => ({ ...l })))
+                setActiveLineIdx(0)
+              }}
+              className='flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-all text-sm font-medium'
+            >
+              <Edit2 className='h-4 w-4' /> Edit
+            </button>
+          </div>
         )}
 
         {/* Lyrics Editor Overlay — Musixmatch-style (covers full panel) */}
