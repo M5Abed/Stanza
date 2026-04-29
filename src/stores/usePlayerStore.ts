@@ -31,6 +31,7 @@ export interface PlayerState {
   loadPlaylist: (tracks: QueueTrack[], startIndex?: number) => void
   addToQueue: (track: QueueTrack) => void
   removeFromQueue: (index: number) => void
+  reorderQueue: (startIndex: number, endIndex: number) => void
   clearQueue: () => void
 
   play: () => void
@@ -204,6 +205,23 @@ export const usePlayerStore = create<PlayerState>()(
     })
   },
 
+  reorderQueue: (startIndex, endIndex) => {
+    set((s) => {
+      const q = [...s.queue]
+      const [removed] = q.splice(startIndex, 1)
+      q.splice(endIndex, 0, removed)
+
+      let idx = s.currentIndex
+      if (idx === startIndex) {
+        idx = endIndex
+      } else {
+        if (idx > startIndex && idx <= endIndex) idx -= 1
+        else if (idx < startIndex && idx >= endIndex) idx += 1
+      }
+      return { queue: q, currentIndex: idx }
+    })
+  },
+
   clearQueue: () => {
     set({
       queue: [],
@@ -280,9 +298,13 @@ export const usePlayerStore = create<PlayerState>()(
 
   setShuffle: (v) => set({ shuffle: v }),
   cycleRepeat: () =>
-    set((s) => ({
-      repeat: s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off',
-    })),
+    set((s) => {
+      const nextRepeat = s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off'
+      if (nextRepeat !== 'off') {
+        useRadioStore.getState().setRadioEnabled(false)
+      }
+      return { repeat: nextRepeat }
+    }),
 
   setLoading: (v) => set({ isLoading: v }),
   setError: (msg) => set({ error: msg }),

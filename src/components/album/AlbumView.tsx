@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
-import { Play, Clock, Music2, ArrowLeft } from 'lucide-react'
+import { Play, Clock, Music2, ArrowLeft, Plus } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 
 export function AlbumView({ albumId }: { albumId: string }) {
@@ -11,6 +11,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
   
   const current = usePlayerStore((s) => s.queue[s.currentIndex])
   const loadPlaylist = usePlayerStore((s) => s.loadPlaylist)
+  const addToQueue = usePlayerStore((s) => s.addToQueue)
   const setActiveView = useUIStore((s) => s.setActiveView)
 
   useEffect(() => {
@@ -101,11 +102,12 @@ export function AlbumView({ albumId }: { albumId: string }) {
 
       {/* Track List */}
       <div className='flex-1 overflow-y-auto px-6 pb-[200px]'>
-        <div className='grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_minmax(120px,200px)_60px] items-center gap-6 px-4 py-3 text-xs font-bold uppercase tracking-wider text-theme-subtext border-b border-white/5 sticky top-0 bg-theme-surface/90 backdrop-blur z-10'>
+        <div className='grid grid-cols-[20px_1fr_60px_40px] md:grid-cols-[20px_1fr_minmax(120px,200px)_60px_40px] items-center gap-6 px-4 py-3 text-xs font-bold uppercase tracking-wider text-theme-subtext border-b border-white/5 sticky top-0 bg-theme-surface/90 backdrop-blur z-10'>
           <span className='text-center'>#</span>
           <span>Title</span>
           <span className='hidden md:block'>Artist</span>
           <span><Clock className='h-4 w-4 mx-auto' /></span>
+          <span></span>
         </div>
 
         <div className='mt-2 flex flex-col gap-1'>
@@ -115,7 +117,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
             return (
               <div 
                 key={track.youtubeId + idx}
-                className={`group grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_minmax(120px,200px)_60px] items-center gap-6 rounded-xl px-4 py-3 transition-colors hover:bg-white/5 cursor-pointer ${isPlayingThis ? 'bg-white/10 shadow-sm' : ''}`}
+                className={`group grid grid-cols-[20px_1fr_60px_40px] md:grid-cols-[20px_1fr_minmax(120px,200px)_60px_40px] items-center gap-6 rounded-xl px-4 py-3 transition-colors hover:bg-white/5 cursor-pointer ${isPlayingThis ? 'bg-white/10 shadow-sm' : ''}`}
                 onDoubleClick={() => loadPlaylist(album.tracks, idx)}
               >
                 <span className='text-sm font-medium text-theme-subtext text-center group-hover:hidden'>{idx + 1}</span>
@@ -129,6 +131,18 @@ export function AlbumView({ albumId }: { albumId: string }) {
 
                 <div className='hidden md:block truncate text-sm font-medium text-theme-subtext/80'>{track.artist || ''}</div>
                 <div className='text-sm font-medium text-theme-subtext/80 text-center'>{track.durationSeconds ? `${Math.floor(track.durationSeconds/60)}:${(track.durationSeconds%60).toString().padStart(2,'0')}` : '--:--'}</div>
+                <div className='flex items-center justify-center'>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      addToQueue(track)
+                    }}
+                    className='opacity-0 group-hover:opacity-100 transition-opacity text-theme-subtext hover:text-white p-2'
+                    title='Add to Queue'
+                  >
+                    <Plus className='h-5 w-5' />
+                  </button>
+                </div>
               </div>
             )
           })}

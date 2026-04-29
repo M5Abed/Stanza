@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { usePlayerStore } from '@/stores/usePlayerStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { Play, Edit2, Check, X, Clock, Music2, Trash2, Heart, Download, WifiOff } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 
 export function PlaylistView({ playlistId }: { playlistId: string }) {
-  const { playlists, renamePlaylist, removeTrack } = usePlaylistsStore()
+  const { playlists, renamePlaylist, removeTrack, deletePlaylist } = usePlaylistsStore()
   const playlist = playlists.find((p) => p.id === playlistId)
   const [offlineEnabled, setOfflineEnabled] = useState(playlist?.offlineEnabled ?? false)
   
@@ -84,13 +85,28 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
                 <h1 className='text-4xl md:text-5xl font-black tracking-tight text-white drop-shadow-md truncate max-w-3xl'>
                   {playlist.name}
                 </h1>
-                {!isLikedSongs && (
-                  <button 
-                    onClick={() => { setEditName(playlist.name); setIsEditing(true) }}
-                    className='opacity-0 group-hover:opacity-100 transition-opacity p-2.5 rounded-full hover:bg-white/10 text-theme-subtext hover:text-white'
-                  >
-                    <Edit2 className='h-5 w-5' />
-                  </button>
+                {!isLikedSongs && playlist.name !== 'Downloaded Songs' && (
+                  <>
+                    <button 
+                      onClick={() => { setEditName(playlist.name); setIsEditing(true) }}
+                      className='opacity-0 group-hover:opacity-100 transition-opacity p-2.5 rounded-full hover:bg-white/10 text-theme-subtext hover:text-white'
+                      title='Rename Playlist'
+                    >
+                      <Edit2 className='h-5 w-5' />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete the playlist "${playlist.name}"?`)) {
+                          deletePlaylist(playlist.id)
+                          useUIStore.getState().setActiveView('home')
+                        }
+                      }}
+                      className='opacity-0 group-hover:opacity-100 transition-opacity p-2.5 rounded-full hover:bg-red-600/20 text-theme-subtext hover:text-red-400'
+                      title='Delete Playlist'
+                    >
+                      <Trash2 className='h-5 w-5' />
+                    </button>
+                  </>
                 )}
               </>
             )}

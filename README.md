@@ -7,10 +7,13 @@ Stanza is a modern, lightweight, and incredibly fast desktop music player powere
 ## 🚀 Features
 - **Seamless Streaming:** Stream high-quality audio seamlessly from YouTube Music.
 - **Smart Spotify Search:** Search tracks and artists flawlessly. Stanza automatically resolves missing Spotify album covers natively via YouTube.
+- **Dynamic Auto-Play Radio:** Get endless, highly-relevant recommendations perfectly matched to your listening session.
+- **Lyrics Integration:** View synchronized lyrics on the fly, and manually edit or sync custom `.lrc` lyrics right in the app.
+- **Playlists & Persistent Queue:** Fully functional queue management and custom playlists saved natively to your local machine.
 - **Discord Rich Presence:** Show off what you're listening to natively on your Discord profile.
 - **Top Songs & Advanced Discographies:** Deep pagination fetches over 50+ albums/singles gracefully, missing absolutely nothing.
 - **Modern UI:** Designed with Framer Motion and TailwindCSS for a high-end, dynamic user experience.
-- **Persistent Database:** Uses Prisma to cache player data and save your playlists securely.
+- **Persistent Database:** Uses Prisma to cache player data and save your preferences securely.
 
 ---
 
@@ -55,12 +58,12 @@ Because Stanza is packaged securely, you **do not** need to be a developer, and 
    Double-click the `.exe` file.
    *(Note: If Windows SmartScreen displays an "Unrecognized app" prompt, click "More info" -> "Run anyway" since this app operates independently without a signed certificate).*
 3. **Enjoy:**
-   VibeStream will unpack itself automatically. Once finished, the app will launch, and a shortcut will be added directly to your Desktop.
+   Stanza will unpack itself automatically. Once finished, the app will launch, and a shortcut will be added directly to your Desktop.
 
 ---
 
 ## 🛠️ For Developers (Manual Build)
-If you wish to compile VibeStream locally rather than using the `.exe`:
+If you wish to compile Stanza locally rather than using the `.exe`:
 
 1. Clone the repository and navigate into the folder.
 2. Install dependencies:

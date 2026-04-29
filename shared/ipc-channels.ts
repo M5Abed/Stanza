@@ -15,6 +15,7 @@ export const IpcChannels = {
   playlistsAddTrack: 'vs:db:playlists:add-track',
   playlistsRemoveTrack: 'vs:db:playlists:remove-track',
   playlistsRename: 'vs:db:playlists:rename',
+  playlistsDelete: 'vs:db:playlists:delete',
   windowSetFullscreen: 'vs:window:set-fullscreen',
   thumbarRegisterIcons: 'vs:thumbar:register-icons',
   thumbarUpdate: 'vs:thumbar:update',

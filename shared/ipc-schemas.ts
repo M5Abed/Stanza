@@ -67,6 +67,10 @@ export const PlaylistRenameSchema = z.object({
   name: z.string().min(1).max(100),
 })
 
+export const PlaylistDeleteSchema = z.object({
+  playlistId: z.string().cuid(),
+})
+
 export const RadioRecommendationsSchema = z.object({
   youtubeId: z.string().min(8).max(32).regex(/^[a-zA-Z0-9_-]+$/),
 })

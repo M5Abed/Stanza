@@ -51,24 +51,25 @@ const BOOTSTRAP_SQL: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "PlaylistTrack_playlistId_position_key" ON "PlaylistTrack"("playlistId", "position")`,
 ]
 
-const MIGRATIONS_SQL: string[] = [
-  `ALTER TABLE "Song" ADD COLUMN "downloadPath" TEXT`,
-  `ALTER TABLE "Song" ADD COLUMN "isDownloaded" BOOLEAN NOT NULL DEFAULT 0`,
-  `ALTER TABLE "Song" ADD COLUMN "cachePath" TEXT`,
-  `ALTER TABLE "Song" ADD COLUMN "lastPlayedAt" DATETIME`,
-  `ALTER TABLE "Playlist" ADD COLUMN "offlineEnabled" BOOLEAN NOT NULL DEFAULT 0`,
-]
-
 export async function ensureBaseSchema(prisma: PrismaClient): Promise<void> {
   for (const sql of BOOTSTRAP_SQL) {
     await prisma.$executeRawUnsafe(sql)
   }
-  for (const sql of MIGRATIONS_SQL) {
-    try {
-      await prisma.$executeRawUnsafe(sql)
-    } catch {
-      // Ignore errors if the column already exists
-    }
+  
+  try {
+    const songInfo = await prisma.$queryRawUnsafe<any[]>(`PRAGMA table_info("Song")`)
+    const songCols = new Set(songInfo.map((c: any) => c.name))
+    
+    if (!songCols.has('downloadPath')) await prisma.$executeRawUnsafe(`ALTER TABLE "Song" ADD COLUMN "downloadPath" TEXT`)
+    if (!songCols.has('isDownloaded')) await prisma.$executeRawUnsafe(`ALTER TABLE "Song" ADD COLUMN "isDownloaded" BOOLEAN NOT NULL DEFAULT 0`)
+    if (!songCols.has('cachePath')) await prisma.$executeRawUnsafe(`ALTER TABLE "Song" ADD COLUMN "cachePath" TEXT`)
+    if (!songCols.has('lastPlayedAt')) await prisma.$executeRawUnsafe(`ALTER TABLE "Song" ADD COLUMN "lastPlayedAt" DATETIME`)
+    
+    const playlistInfo = await prisma.$queryRawUnsafe<any[]>(`PRAGMA table_info("Playlist")`)
+    const playlistCols = new Set(playlistInfo.map((c: any) => c.name))
+    if (!playlistCols.has('offlineEnabled')) await prisma.$executeRawUnsafe(`ALTER TABLE "Playlist" ADD COLUMN "offlineEnabled" BOOLEAN NOT NULL DEFAULT 0`)
+  } catch (err) {
+    console.warn('[db] Failed to run schema migrations', err)
   }
 }
 

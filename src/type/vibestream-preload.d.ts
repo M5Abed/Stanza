@@ -62,6 +62,7 @@ export interface VibestreamPreload {
   getPlaylists: () => Promise<any[]>
   createPlaylist: (name: string) => Promise<any>
   renamePlaylist: (playlistId: string, name: string) => Promise<any>
+  deletePlaylist: (playlistId: string) => Promise<any>
   addTrackToPlaylist: (playlistId: string, youtubeId: string) => Promise<any>
   removeTrackFromPlaylist: (playlistId: string, youtubeId: string) => Promise<any>
   setFullscreen: (isFullscreen: boolean) => Promise<void>

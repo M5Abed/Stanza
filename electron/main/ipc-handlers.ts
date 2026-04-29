@@ -13,6 +13,7 @@ import {
   PlaylistAddTrackSchema,
   PlaylistRemoveTrackSchema,
   PlaylistRenameSchema,
+  PlaylistDeleteSchema,
 } from '../../shared/ipc-schemas'
 import { getPrisma } from './database'
 import { getInnertube, resetInnertube } from './innertube'
@@ -21,11 +22,26 @@ import { spotifySearchMetadata, spotifyFetchCoverUrl, spotifyFetchArtistImage } 
 import { playbackUrlForYoutubeId } from './register-protocol'
 import { downloadSong, deleteDownload, isDownloaded, broadcastDownloadProgress } from './download-manager'
 function getArtistName(tItem: any): string {
+  if (!tItem) return 'Unknown'
   if (Array.isArray(tItem.artists) && tItem.artists.length > 0) return tItem.artists.map((a: any) => a.name).join(', ')
   if (tItem.author?.name) return tItem.author.name
   if (typeof tItem.author === 'string' && tItem.author) return tItem.author
   if (Array.isArray(tItem.authors) && tItem.authors.length > 0) return tItem.authors.map((a: any) => a.name).join(', ')
   if (typeof tItem.artists === 'string' && tItem.artists) return tItem.artists
+  if (tItem.strapline_text_one?.text) return tItem.strapline_text_one.text
+  
+  if (tItem.subtitle?.text) return tItem.subtitle.text
+  if (typeof tItem.subtitle === 'string' && tItem.subtitle) return tItem.subtitle
+  
+  if (tItem.short_byline_text?.runs?.length > 0) return tItem.short_byline_text.runs[0].text
+  if (tItem.long_byline_text?.runs?.length > 0) return tItem.long_byline_text.runs[0].text
+  
+  if (Array.isArray(tItem.flex_columns) && tItem.flex_columns[1]?.title?.runs?.length > 0) {
+    return tItem.flex_columns[1].title.runs[0].text
+  }
+  
+  if (tItem.flex_columns?.[1]?.title?.text) return tItem.flex_columns[1].title.text
+
   return 'Unknown'
 }
 
@@ -52,6 +68,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IpcChannels.playlistsAddTrack)
   ipcMain.removeHandler(IpcChannels.playlistsRemoveTrack)
   ipcMain.removeHandler(IpcChannels.playlistsRename)
+  ipcMain.removeHandler(IpcChannels.playlistsDelete)
   ipcMain.removeHandler(IpcChannels.downloadSong)
   ipcMain.removeHandler(IpcChannels.deleteSong)
   ipcMain.removeHandler(IpcChannels.isDownloaded)
@@ -318,7 +335,7 @@ export function registerIpcHandlers(): void {
       orderBy: { sortOrder: 'asc' },
     })
 
-    return lists.map(p => ({
+    const mappedLists = lists.map(p => ({
       ...p,
       tracks: p.tracks.map(t => ({
         ...t,
@@ -328,6 +345,30 @@ export function registerIpcHandlers(): void {
         }
       }))
     }))
+
+    const downloadedSongs = await db.song.findMany({
+      where: { isDownloaded: true }
+    });
+
+    const downloadedPlaylist = {
+      id: 'downloaded-songs',
+      name: 'Downloaded Songs',
+      sortOrder: -2,
+      isOffline: true,
+      tracks: downloadedSongs.map((song, i) => ({
+        id: `dl-${song.youtubeId}`,
+        playlistId: 'downloaded-songs',
+        youtubeId: song.youtubeId,
+        position: i,
+        createdAt: new Date(),
+        song: {
+          ...song,
+          thumbnailUrl: upscaleGoogleUrl(song.thumbnailUrl)
+        }
+      }))
+    };
+
+    return [downloadedPlaylist, ...mappedLists]
   })
 
   ipcMain.handle(IpcChannels.playlistsCreate, async (_evt, raw: unknown) => {
@@ -351,6 +392,16 @@ export function registerIpcHandlers(): void {
       data: { name },
       include: { tracks: { include: { song: true } } }
     })
+  })
+
+  ipcMain.handle(IpcChannels.playlistsDelete, async (_evt, raw: unknown) => {
+    const { playlistId } = PlaylistDeleteSchema.parse(raw)
+    const db = getPrisma()
+    // First, remove all tracks associated with the playlist
+    await db.playlistTrack.deleteMany({ where: { playlistId } })
+    // Then delete the playlist itself
+    await db.playlist.delete({ where: { id: playlistId } })
+    return { ok: true }
   })
 
   ipcMain.handle(IpcChannels.playlistsAddTrack, async (_evt, raw: unknown) => {
@@ -435,6 +486,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.radioGetRecommendations, async (_evt, raw: unknown) => {
     const { youtubeId } = raw as { youtubeId: string }
 
+    async function enrichWithSpotifyCovers(tracks: any[]): Promise<any[]> {
+      await Promise.allSettled(tracks.map(async (t) => {
+        try {
+          const spCover = await spotifyFetchCoverUrl(t.title, t.artist || '')
+          if (spCover) t.thumbnailUrl = spCover
+        } catch {}
+      }))
+      return tracks
+    }
+
     function extractTracks(items: any[]): any[] {
       const results: any[] = []
       for (const item of items) {
@@ -455,6 +516,22 @@ export function registerIpcHandlers(): void {
       return results
     }
 
+    const db = getPrisma()
+    const songInfo = await db.song.findUnique({ where: { youtubeId } })
+    const seedArtist = songInfo?.artist?.toLowerCase() || ''
+
+    const finalTracks: any[] = []
+    const seenIds = new Set<string>([youtubeId])
+
+    function addTracks(tracks: any[]) {
+      for (const t of tracks) {
+        if (!seenIds.has(t.youtubeId)) {
+          finalTracks.push(t)
+          seenIds.add(t.youtubeId)
+        }
+      }
+    }
+
     // Strategy 1: getRelated() — returns genre-similar songs (best quality)
     try {
       const yt = await getInnertube()
@@ -465,66 +542,108 @@ export function registerIpcHandlers(): void {
         const items = section?.contents ?? section?.items ?? []
         allTracks.push(...extractTracks(items))
       }
+      
       if (allTracks.length > 0) {
-        return allTracks.slice(0, 15)
+        let isRelevant = true
+        if (seedArtist && seedArtist !== 'unknown') {
+          const hasArtistMatch = allTracks.some(t => {
+            if (!t.artist) return false
+            const tArtist = t.artist.toLowerCase()
+            return tArtist.includes(seedArtist) || seedArtist.includes(tArtist)
+          })
+          if (!hasArtistMatch) {
+             console.warn(`[vs:radio] getRelated tracks did not match seed artist "${seedArtist}". Deeming generic.`)
+             isRelevant = false
+          }
+        }
+        if (isRelevant) {
+          addTracks(allTracks)
+          if (finalTracks.length >= 15) return enrichWithSpotifyCovers(finalTracks.slice(0, 15))
+        }
       }
     } catch (err) {
-      console.warn('[vs:radio] getRelated failed, trying getUpNext:', err)
+      console.warn('[vs:radio] getRelated failed or was generic:', err)
     }
 
-    // Strategy 2: getUpNext() — YouTube's default queue (decent genre match)
+    // Strategy 2: Artist Top Songs (better than generic getUpNext)
     try {
-      const yt = await getInnertube()
-      const next = await yt.music.getUpNext(youtubeId)
-      const tracks = extractTracks(next.contents || [])
-      if (tracks.length > 0) {
-        return tracks.slice(0, 10)
+      if (songInfo && songInfo.artist) {
+        const yt = await getInnertube()
+        const search = await yt.music.search(songInfo.artist, { type: 'artist' })
+        const contents = search.contents as any[]
+        const artistId = contents?.[0]?.contents?.[0]?.id
+        if (artistId) {
+          const artist = await yt.music.getArtist(artistId)
+          for (const section of artist.sections || []) {
+            const sec = section as any
+            const titleLo = (sec.title?.text || sec.header?.title?.text || '').toLowerCase()
+            if (titleLo === 'top songs' || titleLo === 'songs') {
+               const tracks = extractTracks(sec.contents || [])
+               addTracks(tracks)
+               if (finalTracks.length >= 15) return enrichWithSpotifyCovers(finalTracks.slice(0, 15))
+            }
+          }
+        }
       }
     } catch (err) {
-      console.warn('[vs:radio] getUpNext failed, trying Last.fm:', err)
+      console.warn('[vs:radio] Artist top songs fallback failed:', err)
     }
-      
+
+    // Strategy 2.5: Search songs by artist
+    try {
+      if (songInfo && songInfo.artist && finalTracks.length < 10) {
+        const yt = await getInnertube()
+        const searchRes = await yt.music.search(songInfo.artist, { type: 'song' })
+        const contents = searchRes.contents as any[]
+        const section = contents?.[0]
+        const items = section?.contents ?? section?.items ?? []
+        addTracks(extractTracks(items))
+        if (finalTracks.length >= 15) return enrichWithSpotifyCovers(finalTracks.slice(0, 15))
+      }
+    } catch (err) {
+       console.warn('[vs:radio] Artist search fallback failed:', err)
+    }
+
     // Strategy 3: Last.fm similar tracks → search on YT Music (genre-aware)
     try {
-      const apiKey = process.env.LASTFM_API_KEY
-      if (!apiKey) return []
-      
-      const db = getPrisma()
-      const songInfo = await db.song.findUnique({ where: { youtubeId } })
-      if (!songInfo || !songInfo.artist || !songInfo.title) return []
+      if (finalTracks.length < 10) {
+        const apiKey = process.env.LASTFM_API_KEY
+        if (apiKey && songInfo && songInfo.artist && songInfo.title) {
+          const lfUrl = `http://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(songInfo.artist)}&track=${encodeURIComponent(songInfo.title)}&api_key=${apiKey}&format=json&limit=8`
+          const res = await fetch(lfUrl)
+          const json = await res.json() as any
+          const simTracks = json.similartracks?.track || []
 
-      const lfUrl = `http://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(songInfo.artist)}&track=${encodeURIComponent(songInfo.title)}&api_key=${apiKey}&format=json&limit=8`
-      const res = await fetch(lfUrl)
-      const json = await res.json() as any
-      const simTracks = json.similartracks?.track || []
-
-      const recommendations: any[] = []
-      const yt = await getInnertube()
-      
-      for (const t of simTracks) {
-        const s = await yt.music.search(`${t.name} ${t.artist.name}`, { type: 'song' })
-        const section = (s.contents as any[])?.[0]
-        const songs: any[] = section?.contents ?? []
-        if (!songs.length) continue
-        const tItem = songs[0] as any
-        if (!tItem.id || tItem.id === youtubeId) continue
-        
-        recommendations.push({
-          youtubeId: tItem.id,
-          title: tItem.title ?? tItem.name ?? 'Unknown',
-          artist: getArtistName(tItem),
-          album: tItem.album?.name ?? null,
-          thumbnailUrl: getBestYtThumbnail(tItem.thumbnail || tItem.thumbnails),
-          durationSeconds: tItem.duration?.seconds ?? null,
-          isExplicit: Boolean(tItem.is_explicit),
-        })
-        if (recommendations.length >= 8) break
+          const recommendations: any[] = []
+          const yt = await getInnertube()
+          
+          for (const t of simTracks) {
+            const s = await yt.music.search(`${t.name} ${t.artist.name}`, { type: 'song' })
+            const section = (s.contents as any[])?.[0]
+            const songs: any[] = section?.contents ?? []
+            if (!songs.length) continue
+            const tItem = songs[0] as any
+            if (!tItem.id || tItem.id === youtubeId) continue
+            
+            recommendations.push({
+              youtubeId: tItem.id,
+              title: tItem.title ?? tItem.name ?? 'Unknown',
+              artist: getArtistName(tItem),
+              album: tItem.album?.name ?? null,
+              thumbnailUrl: getBestYtThumbnail(tItem.thumbnail || tItem.thumbnails),
+              durationSeconds: tItem.duration?.seconds ?? null,
+              isExplicit: Boolean(tItem.is_explicit),
+            })
+            if (recommendations.length >= 8) break
+          }
+          addTracks(recommendations)
+        }
       }
-      return recommendations
     } catch (eFallback) {
-       console.error('[vs:radio] All strategies failed', eFallback)
-       return []
+       console.error('[vs:radio] LastFM strategies failed', eFallback)
     }
+
+    return enrichWithSpotifyCovers(finalTracks.slice(0, 15))
   })
 
   ipcMain.handle(IpcChannels.artistGetDetails, async (_evt, raw: unknown) => {
@@ -578,13 +697,13 @@ export function registerIpcHandlers(): void {
 
         let items = sec.contents || []
         
-        if (titleLo.includes('album') || titleLo.includes('single') || titleLo.includes('ep')) {
-           const moreEndpoint = sec.header?.more_content?.endpoint
+        if (titleLo.includes('album') || titleLo.includes('single') || titleLo.includes('ep') || titleLo === 'top songs' || titleLo === 'songs') {
+           const moreEndpoint = sec.header?.more_content?.endpoint || sec.bottom_text?.endpoint || sec.endpoint
            if (moreEndpoint) {
               try {
                 const page = await moreEndpoint.call(yt.actions, { parse: true, client: 'YTMUSIC' })
                 if (page?.contents_memo) {
-                   const expandedItems = page.contents_memo.get('MusicTwoRowItem')
+                   const expandedItems = [...(page.contents_memo.get('MusicTwoRowItem') || []), ...(page.contents_memo.get('MusicResponsiveListItem') || [])]
                    if (expandedItems && expandedItems.length > 0) {
                       items = expandedItems
                    }
@@ -739,9 +858,9 @@ export function registerIpcHandlers(): void {
           return {
             youtubeId: yid,
             title: tItem.title?.text || tItem.title || 'Unknown',
-            artist: getArtistName(tItem) !== 'Unknown' ? getArtistName(tItem) : getArtistName(header || album),
-            album: header?.title?.text || (album as any).title || null,
-            thumbnailUrl: getBestYtThumbnail(tItem.thumbnail || tItem.thumbnails) || getBestYtThumbnail(header?.thumbnails || (album as any).thumbnails) || null,
+            artist: getArtistName(tItem) !== 'Unknown' ? getArtistName(tItem) : albumArtist,
+            album: albumTitle,
+            thumbnailUrl: getBestYtThumbnail(tItem.thumbnail || tItem.thumbnails) || finalThumb,
             durationSeconds: tItem.duration?.seconds || null,
             isExplicit: Boolean(tItem.is_explicit),
           }

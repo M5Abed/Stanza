@@ -29,7 +29,7 @@ export function RadioView() {
             onChange={toggleRadio} 
           />
           <div className="peer h-8 w-14 rounded-full bg-white/10 shadow-inner after:absolute after:left-1 after:top-[4px] after:h-6 after:w-6 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-theme-accent peer-checked:after:translate-x-full peer-checked:after:border-white focus:outline-none" />
-          <span className='ml-3 text-sm font-semibold text-white/90'>Auto-Play Enable</span>
+          <span className='ml-3 text-sm font-semibold text-white/90'>Auto Play</span>
         </label>
       </div>
 

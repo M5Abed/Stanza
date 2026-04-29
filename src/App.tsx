@@ -68,6 +68,7 @@ function MainContent() {
   if (activeView === 'home') return <HomeView />
   if (activeView === 'search') return <SearchView />
   if (activeView === 'radio') return <RadioView />
+  if (activeView === 'queue') return <QueuePanel />
   if (activeView.startsWith('artist-songs-')) return <ArtistAllSongsView artistId={activeView.replace('artist-songs-', '')} />
   if (activeView.startsWith('artist-')) return <ArtistView artistId={activeView.replace('artist-', '')} />
   if (activeView.startsWith('album-')) return <AlbumView albumId={activeView.replace('album-', '')} />
@@ -108,10 +109,6 @@ export default function App() {
 
           <div className='flex-1 p-6'>
             <MainContent />
-            {/* The Queue Panel */}
-            <div className='mt-8'>
-              <QueuePanel />
-            </div>
           </div>
         </main>
       </div>

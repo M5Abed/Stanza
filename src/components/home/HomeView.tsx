@@ -5,11 +5,11 @@ import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useRadioStore } from '@/stores/useRadioStore'
 
 export function HomeView() {
-  const { queue, playQueueIndex, playTrackNow, addToQueue } = usePlayerStore()
+  const { queue, currentIndex, playQueueIndex, playTrackNow, addToQueue } = usePlayerStore()
   const { suggestions, fetchRecommendations } = useRadioStore()
 
-  // Build a rudimentary 'Recently Played' from the queue history (the queue acts as session history if reversed)
-  const recent = [...queue].reverse().slice(0, 8)
+  // Build a rudimentary 'Recently Played' from the queue history up to the current track
+  const recent = queue.slice(0, currentIndex + 1).reverse().slice(0, 8)
 
   return (
     <div className='flex flex-col gap-8'>

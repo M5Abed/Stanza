@@ -27,6 +27,7 @@ interface PlaylistsState {
   fetchPlaylists: () => Promise<void>
   createPlaylist: (name: string) => Promise<void>
   renamePlaylist: (playlistId: string, name: string) => Promise<void>
+  deletePlaylist: (playlistId: string) => Promise<void>
   addTrack: (playlistId: string, track: Track) => Promise<void>
   removeTrack: (playlistId: string, youtubeId: string) => Promise<void>
   toggleLiked: (track: Track) => Promise<void>
@@ -77,6 +78,16 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       await get().fetchPlaylists() // sync layout
     } catch (err) {
       console.error('Failed to rename playlist:', err)
+    }
+  },
+
+  deletePlaylist: async (playlistId: string) => {
+    if (!window.vibestream) return
+    try {
+      await window.vibestream.deletePlaylist(playlistId)
+      await get().fetchPlaylists() // reload everything
+    } catch (err) {
+      console.error('Failed to delete playlist:', err)
     }
   },
 

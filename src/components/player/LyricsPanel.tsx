@@ -428,6 +428,24 @@ export function LyricsPanel() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activeLineIdx, isEditing])
 
+  /** Auto-sync active line with playback position when playing */
+  useEffect(() => {
+    if (!isEditing || !isPlaying || editorLines.length === 0) return;
+    
+    let nextIdx = -1;
+    for (let i = 0; i < editorLines.length; i++) {
+      if (editorLines[i].time >= 0 && editorLines[i].time <= positionSec + 0.2) {
+        nextIdx = i;
+      } else if (editorLines[i].time >= 0 && editorLines[i].time > positionSec + 0.2) {
+        break;
+      }
+    }
+    
+    if (nextIdx !== -1 && nextIdx !== activeLineIdx) {
+      setActiveLineIdx(nextIdx);
+    }
+  }, [positionSec, isEditing, isPlaying, editorLines, activeLineIdx]);
+
   // Reference for the lyrics scrolling container
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)

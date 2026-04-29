@@ -412,7 +412,7 @@ export function SearchView() {
                     const viewId = a.spotifyId.startsWith('UC') ? a.spotifyId : a.name
                     setActiveView(`artist-${viewId}` as any)
                   }}
-                  className='group relative flex flex-col gap-3 rounded-2xl bg-theme-surface/40 backdrop-blur-md p-4 transition-all hover:bg-white/10 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 overflow-hidden cursor-pointer'
+                  className='group relative flex flex-col items-center gap-3 rounded-2xl bg-theme-surface/40 backdrop-blur-md p-4 transition-all hover:bg-white/10 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 overflow-hidden cursor-pointer'
                 >
                   <div className='h-[120px] w-[120px] shrink-0 overflow-hidden rounded-full bg-[#282828] shadow-lg'>
                     {a.imageUrl ? (

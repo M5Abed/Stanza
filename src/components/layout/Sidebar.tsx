@@ -1,4 +1,4 @@
-import { Home, Search, Library, Plus, Heart } from 'lucide-react'
+import { Home, Search, Library, Plus, Heart, Download } from 'lucide-react'
 import { useEffect } from 'react'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -76,6 +76,10 @@ export function Sidebar() {
                  {playlist.name === 'Liked Songs' ? (
                    <div className='h-full w-full bg-black flex items-center justify-center shadow-lg text-theme-accent font-bold'>
                      <Heart className='h-6 w-6' fill='currentColor' />
+                   </div>
+                 ) : playlist.name === 'Downloaded Songs' ? (
+                   <div className='h-full w-full bg-black flex items-center justify-center shadow-lg text-green-400 font-bold'>
+                     <Download className='h-6 w-6' />
                    </div>
                  ) : (
                    <>

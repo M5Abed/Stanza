@@ -1,4 +1,5 @@
 import { Trash2, Play } from 'lucide-react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { usePlayerStore, type QueueTrack } from '@/stores/usePlayerStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
@@ -9,6 +10,11 @@ export function QueuePanel() {
   const playQueueIndex = usePlayerStore((s) => s.playQueueIndex)
   const removeFromQueue = usePlayerStore((s) => s.removeFromQueue)
   const clearQueue = usePlayerStore((s) => s.clearQueue)
+  const reorderQueue = usePlayerStore((s) => s.reorderQueue)
+  const repeat = usePlayerStore((s) => s.repeat)
+
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
   if (queue.length === 0) return null
 
@@ -32,6 +38,9 @@ export function QueuePanel() {
         <ul className='space-y-0'>
           <AnimatePresence initial={false}>
             {queue.map((t: QueueTrack, i: number) => {
+              if (i < currentIndex) return null
+              if (repeat === 'one' && i !== currentIndex) return null
+
               const isPlaying = i === currentIndex
 
               return (
@@ -41,9 +50,32 @@ export function QueuePanel() {
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, height: 0 }}
-                  className={`group relative flex items-center justify-between rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10 ${
+                  draggable
+                  onDragStart={(e: any) => {
+                    setDraggedIdx(i)
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+                    setDragOverIdx(i)
+                  }}
+                  onDragLeave={() => setDragOverIdx(null)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    if (draggedIdx !== null && draggedIdx !== i) {
+                      reorderQueue(draggedIdx, i)
+                    }
+                    setDraggedIdx(null)
+                    setDragOverIdx(null)
+                  }}
+                  onDragEnd={() => {
+                    setDraggedIdx(null)
+                    setDragOverIdx(null)
+                  }}
+                  className={`group relative flex items-center justify-between rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10 cursor-grab active:cursor-grabbing ${
                     isPlaying ? 'bg-white/10' : ''
-                  }`}
+                  } ${dragOverIdx === i ? 'ring-2 ring-theme-accent' : ''} ${draggedIdx === i ? 'opacity-50' : ''}`}
                 >
                   <div className='flex items-center gap-4 flex-1 min-w-0'>
                     <div className='relative h-[40px] w-[40px] shrink-0 overflow-hidden shadow bg-[#282828]'>

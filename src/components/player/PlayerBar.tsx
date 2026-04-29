@@ -15,7 +15,8 @@ import {
   Download,
   Check,
   Loader2,
-  PictureInPicture2
+  PictureInPicture2,
+  ListMusic
 } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
@@ -49,6 +50,7 @@ export function PlayerBar() {
   const next = usePlayerStore((s) => s.next)
   const previous = usePlayerStore((s) => s.previous)
   const setActiveView = useUIStore((s) => s.setActiveView)
+  const activeView = useUIStore((s) => s.activeView)
   const setVolume = usePlayerStore((s) => s.setVolume)
   const requestSeek = usePlayerStore((s) => s.requestSeek)
   const setShuffle = usePlayerStore((s) => s.setShuffle)
@@ -121,6 +123,7 @@ export function PlayerBar() {
     try {
       await window.vibestream.downloadSong(current.youtubeId)
       setDlStatus('done')
+      usePlaylistsStore.getState().fetchPlaylists()
     } catch {
       setDlStatus('idle')
     }
@@ -267,6 +270,24 @@ export function PlayerBar() {
       {/* Right Column: Lyrics + Volume */}
       <div className='flex w-[30%] min-w-[180px] items-center justify-end gap-4'>
         <div className='flex items-center gap-3 text-theme-subtext'>
+          <button
+            onClick={() => {
+              if (activeView === 'queue') {
+                const { history, goBack } = useUIStore.getState()
+                if (history.length > 0) {
+                  goBack()
+                } else {
+                  setActiveView('home')
+                }
+              } else {
+                setActiveView('queue')
+              }
+            }}
+            className={`transition-colors ${activeView === 'queue' ? 'text-theme-accent drop-shadow-[0_0_8px_rgba(139,92,246,0.3)]' : 'text-theme-subtext hover:text-white'}`}
+            title='Queue'
+          >
+            <ListMusic className='h-[18px] w-[18px]' />
+          </button>
           <LyricsPanel />
           <div className='group relative flex h-2 w-24 items-center' onWheel={handleVolumeWheel}>
             <Volume2 className='h-5 w-5 mr-3 shrink-0' />

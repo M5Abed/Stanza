@@ -72,6 +72,8 @@ contextBridge.exposeInMainWorld('vibestream', {
     invoke<any>(IpcChannels.playlistsRemoveTrack, { playlistId, youtubeId }),
   renamePlaylist: (playlistId: string, name: string) =>
     invoke<any>(IpcChannels.playlistsRename, { playlistId, name }),
+  deletePlaylist: (playlistId: string) =>
+    invoke<any>(IpcChannels.playlistsDelete, { playlistId }),
   setFullscreen: (isFullscreen: boolean) =>
     invoke<void>(IpcChannels.windowSetFullscreen, isFullscreen),
   registerThumbarIcons: (icons: Record<string, string>) => 
