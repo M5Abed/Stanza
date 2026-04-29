@@ -53,7 +53,7 @@ Because Stanza is packaged securely, you **do not** need to be a developer, and 
 
 ### Steps to Install
 1. **Download the Installer:**
-   Locate the official pre-compiled installer: `stanza_0.1.0.exe` (or the latest version provided).
+   Locate the official pre-compiled installer: `stanza_1.1.0.exe` (or the latest version provided).
 2. **Run the Executable:**
    Double-click the `.exe` file.
    *(Note: If Windows SmartScreen displays an "Unrecognized app" prompt, click "More info" -> "Run anyway" since this app operates independently without a signed certificate).*
