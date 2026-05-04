@@ -55,6 +55,7 @@ Stanza is built using the latest web technologies compiled efficiently for deskt
 - **[youtubei.js](https://github.com/LuanRT/YouTube.js)** & **[node-youtube-music](https://github.com/codyebberson/node-youtube-music)** - Unofficial YouTube APIs to scrape and stream music transparently.
 - **[@distube/ytdl-core](https://github.com/distubejs/ytdl-core)** - High-fidelity media extraction.
 - **[discord-rpc](https://github.com/discordjs/RPC)** - Native Discord integrations.
+- **[Spotify Web API](https://developer.spotify.com/documentation/web-api/)** - Primary source for high-fidelity track metadata and artist imagery.
 
 ---
 
