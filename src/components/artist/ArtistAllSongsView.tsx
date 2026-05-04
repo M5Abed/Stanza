@@ -9,7 +9,8 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  const { playTrackNow, addToQueue } = usePlayerStore()
+  const playTrackNow = usePlayerStore(s => s.playTrackNow)
+  const addToQueue = usePlayerStore(s => s.addToQueue)
   const setActiveView = useUIStore((s) => s.setActiveView)
   const [activeTab, setActiveTab] = useState<'albums' | 'singles'>('albums')
 

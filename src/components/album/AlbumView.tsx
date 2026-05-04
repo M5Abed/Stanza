@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
-import { Play, Clock, Music2, ArrowLeft, Plus } from 'lucide-react'
+import { Play, Clock, Music2, ArrowLeft, Plus, Heart, Download, Check } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
+import { useSavedPlaylistsStore } from '@/stores/useSavedPlaylistsStore'
+import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
 export function AlbumView({ albumId }: { albumId: string }) {
   const [album, setAlbum] = useState<any>(null)
@@ -13,6 +16,90 @@ export function AlbumView({ albumId }: { albumId: string }) {
   const loadPlaylist = usePlayerStore((s) => s.loadPlaylist)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const setActiveView = useUIStore((s) => s.setActiveView)
+  const openMenu = useContextMenuStore(s => s.openMenu)
+  const { savePlaylist, removePlaylist, isSaved } = useSavedPlaylistsStore()
+
+  const isYtmPlaylist = albumId.startsWith('VL') || albumId.startsWith('OLAK5uy_')
+  const saved = isSaved(albumId)
+
+  // Download state
+  const [dlState, setDlState] = useState<'idle' | 'downloading' | 'done'>('idle')
+  const [dlProgress, setDlProgress] = useState(0)
+  const dlRef = useRef<{ total: number; completed: Set<string> }>({ total: 0, completed: new Set() })
+  const cancelledRef = useRef(false)
+
+  // Listen for download progress
+  useEffect(() => {
+    if (!window.vibestream || dlState !== 'downloading') return
+    const unsub = window.vibestream.onDownloadProgress((data) => {
+      if (cancelledRef.current) return
+      if (data.progress >= 100 && data.youtubeId) {
+        dlRef.current.completed.add(data.youtubeId)
+        const pct = (dlRef.current.completed.size / dlRef.current.total) * 100
+        setDlProgress(pct)
+        if (dlRef.current.completed.size >= dlRef.current.total) {
+          setDlState('done')
+          setDlProgress(100)
+        }
+      }
+    })
+    return () => { unsub?.() }
+  }, [dlState])
+
+  const handleDownloadClick = useCallback(async () => {
+    if (!album || !window.vibestream) return
+
+    // Cancel if already downloading
+    if (dlState === 'downloading') {
+      cancelledRef.current = true
+      setDlState('idle')
+      setDlProgress(0)
+      dlRef.current = { total: 0, completed: new Set() }
+      return
+    }
+
+    // Reset if done, allow re-download
+    cancelledRef.current = false
+
+    const tracks = album.tracks.filter((t: any) => t.youtubeId)
+    if (tracks.length === 0) return
+
+    // Check which aren't downloaded yet
+    const need: any[] = []
+    for (const t of tracks) {
+      try {
+        const res = await window.vibestream.isDownloaded(t.youtubeId)
+        if (!res?.downloaded) need.push(t)
+      } catch { need.push(t) }
+    }
+
+    if (need.length === 0) {
+      setDlState('done')
+      setDlProgress(100)
+      return
+    }
+
+    dlRef.current = { total: need.length, completed: new Set() }
+    setDlState('downloading')
+    setDlProgress(0)
+
+    for (const t of need) {
+      if (cancelledRef.current) break
+      try {
+        // Upsert song metadata first
+        await window.vibestream.songUpsert({
+          youtubeId: t.youtubeId,
+          title: t.title,
+          artist: t.artist || album.artist || 'Unknown',
+          thumbnailUrl: t.thumbnailUrl || album.thumbnailUrl,
+          durationSeconds: t.durationSeconds,
+        })
+        await window.vibestream.downloadSong(t.youtubeId)
+      } catch (e) {
+        console.error('[download]', t.youtubeId, e)
+      }
+    }
+  }, [album, dlState])
 
   useEffect(() => {
     async function load() {
@@ -67,7 +154,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
         </div>
         
         <div className='flex flex-col gap-3 min-w-0 z-10'>
-          <span className='text-xs font-bold uppercase tracking-widest text-theme-subtext drop-shadow-sm'>Album</span>
+          <span className='text-xs font-bold uppercase tracking-widest text-theme-subtext drop-shadow-sm'>{isYtmPlaylist ? 'Playlist' : 'Album'}</span>
           
           <div className='group flex items-center gap-4'>
             <h1 className='text-4xl md:text-5xl font-black tracking-tight text-white drop-shadow-md truncate max-w-3xl'>
@@ -76,7 +163,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
           </div>
 
           <div className='text-sm font-medium text-theme-subtext mt-2 flex items-center gap-2'>
-            <span className='text-white'>{album.artist}</span>
+            <span className='text-white'>{album.artist ? <ArtistLinks artist={album.artist} linkClassName='text-white' /> : 'Unknown'}</span>
             {album.year && <><span>•</span><span>{album.year}</span></>}
             <span>•</span>
             <span>{album.tracks.length} songs</span>
@@ -98,6 +185,73 @@ export function AlbumView({ albumId }: { albumId: string }) {
         >
           <Play className='h-6 w-6 ml-1 fill-current' />
         </button>
+
+        {/* Save to Library */}
+        {isYtmPlaylist && (
+          <button
+            onClick={() => {
+              if (saved) {
+                removePlaylist(albumId)
+              } else {
+                savePlaylist({
+                  playlistId: albumId,
+                  title: album.title,
+                  author: album.artist || 'Unknown',
+                  thumbnailUrl: album.thumbnailUrl,
+                  trackCount: album.tracks.length,
+                })
+              }
+            }}
+            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-110 ${
+              saved ? 'text-theme-accent' : 'text-white/50 hover:text-white'
+            }`}
+            title={saved ? 'Remove from Library' : 'Save to Library'}
+          >
+            <Heart className={`h-6 w-6 ${saved ? 'fill-current' : ''}`} />
+          </button>
+        )}
+
+        {/* Download All */}
+        {saved && (
+          <button
+            onClick={handleDownloadClick}
+            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
+              dlState === 'done'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : dlState === 'downloading'
+                ? 'bg-theme-accent/10 text-theme-accent border border-theme-accent/30 cursor-wait'
+                : 'bg-white/5 text-theme-subtext hover:text-white hover:bg-white/10 border border-white/10'
+            }`}
+            title={dlState === 'done' ? 'All downloaded' : dlState === 'downloading' ? 'Click to cancel' : 'Download all tracks'}
+          >
+            {dlState === 'downloading' ? (
+              <div className='relative flex items-center justify-center' style={{ width: 20, height: 20 }}>
+                <svg className='-rotate-90' width='20' height='20' viewBox='0 0 20 20'>
+                  <circle cx='10' cy='10' r='8' fill='none' stroke='currentColor' strokeWidth='2.5' opacity='0.15' />
+                  <circle
+                    cx='10' cy='10' r='8' fill='none' stroke='currentColor' strokeWidth='2.5'
+                    strokeDasharray={`${2 * Math.PI * 8}`}
+                    strokeDashoffset={`${2 * Math.PI * 8 * (1 - dlProgress / 100)}`}
+                    strokeLinecap='round'
+                    style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                  />
+                </svg>
+                <span className='absolute inset-0 flex items-center justify-center text-[7px] font-black leading-none'>
+                  {Math.round(dlProgress)}
+                </span>
+              </div>
+            ) : dlState === 'done' ? (
+              <Check className='h-4 w-4' />
+            ) : (
+              <Download className='h-4 w-4' />
+            )}
+            {dlState === 'done'
+              ? 'Downloaded'
+              : dlState === 'downloading'
+              ? `${Math.round(dlProgress)}% — Cancel`
+              : 'Download All'}
+          </button>
+        )}
       </div>
 
       {/* Track List */}
@@ -118,7 +272,8 @@ export function AlbumView({ albumId }: { albumId: string }) {
               <div 
                 key={track.youtubeId + idx}
                 className={`group grid grid-cols-[20px_1fr_60px_40px] md:grid-cols-[20px_1fr_minmax(120px,200px)_60px_40px] items-center gap-6 rounded-xl px-4 py-3 transition-colors hover:bg-white/5 cursor-pointer ${isPlayingThis ? 'bg-white/10 shadow-sm' : ''}`}
-                onDoubleClick={() => loadPlaylist(album.tracks, idx)}
+                onClick={() => loadPlaylist(album.tracks, idx)}
+                onContextMenu={(e) => openMenu(e, track)}
               >
                 <span className='text-sm font-medium text-theme-subtext text-center group-hover:hidden'>{idx + 1}</span>
                 <span className='hidden group-hover:flex items-center justify-center -ml-1 text-white'><Play className='h-4 w-4 fill-current' /></span>
@@ -129,7 +284,7 @@ export function AlbumView({ albumId }: { albumId: string }) {
                   </div>
                 </div>
 
-                <div className='hidden md:block truncate text-sm font-medium text-theme-subtext/80'>{track.artist || ''}</div>
+                <div className='hidden md:block truncate text-sm font-medium text-theme-subtext/80'>{track.artist ? <ArtistLinks artist={track.artist} linkClassName='text-theme-subtext/80' /> : ''}</div>
                 <div className='text-sm font-medium text-theme-subtext/80 text-center'>{track.durationSeconds ? `${Math.floor(track.durationSeconds/60)}:${(track.durationSeconds%60).toString().padStart(2,'0')}` : '--:--'}</div>
                 <div className='flex items-center justify-center'>
                   <button

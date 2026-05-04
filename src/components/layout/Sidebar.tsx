@@ -1,11 +1,25 @@
-import { Home, Search, Library, Plus, Heart, Download } from 'lucide-react'
-import { useEffect } from 'react'
+import { Home, Search, Library, Plus, Heart, Download, Edit2, Trash2, ListMusic } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
+import { useSavedPlaylistsStore } from '@/stores/useSavedPlaylistsStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { getHighResUrl, handleImgError } from '@/utils/image'
 
 export function Sidebar() {
-  const { playlists, createPlaylist, fetchPlaylists } = usePlaylistsStore()
+  const { playlists, createPlaylist, fetchPlaylists, renamePlaylist, deletePlaylist } = usePlaylistsStore()
+  const savedYtmPlaylists = useSavedPlaylistsStore((s) => s.savedPlaylists)
+  const removeSavedPlaylist = useSavedPlaylistsStore((s) => s.removePlaylist)
   const { activeView, setActiveView } = useUIStore()
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; playlistId: string; isYtm?: boolean } | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+
+  useEffect(() => {
+    const handleGlobalClick = () => setContextMenu(null)
+    document.addEventListener('click', handleGlobalClick)
+    return () => document.removeEventListener('click', handleGlobalClick)
+  }, [])
 
   useEffect(() => {
     fetchPlaylists()
@@ -70,6 +84,11 @@ export function Sidebar() {
             <button
               key={playlist.id}
               onClick={() => setActiveView(`playlist-${playlist.id}`)}
+              onContextMenu={(e) => {
+                if (playlist.name === 'Liked Songs' || playlist.name === 'Downloaded Songs') return
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, playlistId: playlist.id })
+              }}
               className={`flex w-full items-center gap-4 rounded-2xl p-2 text-left text-sm transition-all hover:bg-white/5 hover:text-white ${isActive ? 'bg-white/10 text-white' : 'text-theme-subtext'}`}
             >
               <div className='h-12 w-12 shrink-0 rounded-xl bg-theme-elevated flex items-center justify-center shadow-inner overflow-hidden'>
@@ -88,14 +107,120 @@ export function Sidebar() {
                    </>
                  )}
               </div>
-              <div className='flex flex-col truncate relative z-10'>
-                <span className='truncate font-medium text-white/90'>{playlist.name}</span>
+              <div className='flex flex-col truncate relative z-10 min-w-0 flex-1'>
+                {renamingId === playlist.id ? (
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onBlur={() => {
+                      if (editName.trim() && editName !== playlist.name) {
+                        renamePlaylist(playlist.id, editName.trim())
+                      }
+                      setRenamingId(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                      if (e.key === 'Escape') setRenamingId(null)
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className='w-full bg-white/10 px-1.5 py-0.5 rounded text-white font-medium outline-none focus:ring-1 focus:ring-theme-accent'
+                  />
+                ) : (
+                  <span className='truncate font-medium text-white/90'>{playlist.name}</span>
+                )}
                 <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>Playlist • {playlist.tracks.length} songs</span>
               </div>
             </button>
           )})}
+
+          {/* Saved YouTube Music Playlists */}
+          {savedYtmPlaylists.length > 0 && (
+            <>
+              <div className='h-px w-full bg-white/10 my-3 rounded-full' />
+              {savedYtmPlaylists.map((pl) => {
+                const isActive = activeView === `album-${pl.playlistId}`
+                return (
+                  <button
+                    key={pl.playlistId}
+                    onClick={() => setActiveView(`album-${pl.playlistId}` as any)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setContextMenu({ x: e.clientX, y: e.clientY, playlistId: pl.playlistId, isYtm: true })
+                    }}
+                    className={`flex w-full items-center gap-4 rounded-2xl p-2 text-left text-sm transition-all hover:bg-white/5 hover:text-white ${isActive ? 'bg-white/10 text-white' : 'text-theme-subtext'}`}
+                  >
+                    <div className='h-12 w-12 shrink-0 rounded-xl bg-theme-elevated flex items-center justify-center shadow-inner overflow-hidden'>
+                      {pl.thumbnailUrl ? (
+                        <img src={getHighResUrl(pl.thumbnailUrl)} alt='' className='h-full w-full object-cover' onError={handleImgError} />
+                      ) : (
+                        <ListMusic className='h-5 w-5 text-theme-subtext' />
+                      )}
+                    </div>
+                    <div className='flex flex-col truncate relative z-10 min-w-0 flex-1'>
+                      <span className='truncate font-medium text-white/90'>{pl.title}</span>
+                      <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>{pl.author}{pl.trackCount ? ` • ${pl.trackCount} songs` : ''}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </>
+          )}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div 
+          className='fixed z-50 w-52 rounded-xl bg-[#282828] border border-white/10 shadow-2xl overflow-hidden py-1 animate-in fade-in duration-200'
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          {contextMenu.isYtm ? (
+            /* Saved YTM playlist context menu */
+            <button
+              onClick={() => {
+                removeSavedPlaylist(contextMenu.playlistId)
+                if (activeView === `album-${contextMenu.playlistId}`) setActiveView('home')
+                setContextMenu(null)
+              }}
+              className='flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors'
+            >
+              <Trash2 className='h-4 w-4' />
+              Remove from Library
+            </button>
+          ) : (
+            /* Local playlist context menu */
+            <>
+              <button
+                onClick={() => {
+                   const p = playlists.find(x => x.id === contextMenu.playlistId)
+                   if (p) {
+                     setRenamingId(p.id)
+                     setEditName(p.name)
+                   }
+                }}
+                className='flex w-full items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+              >
+                <Edit2 className='h-4 w-4' />
+                Rename
+              </button>
+              <button
+                onClick={() => {
+                   const p = playlists.find(x => x.id === contextMenu.playlistId)
+                   if (p && confirm(`Are you sure you want to delete "${p.name}"?`)) {
+                     deletePlaylist(p.id)
+                     if (activeView === `playlist-${p.id}`) setActiveView('home')
+                   }
+                }}
+                className='flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors'
+              >
+                <Trash2 className='h-4 w-4' />
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

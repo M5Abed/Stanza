@@ -18,6 +18,15 @@ export interface VibestreamPreload {
       subscribers: string | null
     }[]
   >
+  searchPlaylists: (query: string) => Promise<
+    {
+      playlistId: string
+      title: string
+      author: string
+      thumbnailUrl: string | null
+      trackCount: number | null
+    }[]
+  >
   getPlaybackUrl: (youtubeId: string) => Promise<{ playbackUrl: string }>
   songUpsert: (payload: unknown) => Promise<unknown>
   saveManualLyrics: (youtubeId: string, lrcRaw: string) => Promise<unknown>
@@ -79,11 +88,20 @@ export interface VibestreamPreload {
   isDownloaded: (youtubeId: string) => Promise<{ downloaded: boolean }>
   setPlaylistOffline: (playlistId: string, enabled: boolean) => Promise<{ ok: boolean }>
   onDownloadProgress: (callback: (data: { youtubeId: string; progress: number }) => void) => () => void
-  // Mini-player
-  setMiniPlayer?: (enabled: boolean) => Promise<void>
+
+
   // Lyrics sharing
   exportLyrics: (lrcRaw: string, suggestedName: string) => Promise<{ ok: boolean; path?: string }>
   importLyrics: () => Promise<{ ok: boolean; lrcRaw: string | null }>
+  // App visibility
+  onAppVisibilityChange: (callback: (data: { visible: boolean }) => void) => () => void
+  // Floating lyrics window
+  openFloatingLyrics: () => Promise<{ ok: boolean }>
+  closeFloatingLyrics: () => Promise<{ ok: boolean }>
+  toggleFloatingLyricsPin: () => Promise<{ pinned: boolean }>
+  sendFloatingLyricsState: (data: any) => void
+  onFloatingLyricsState: (callback: (data: any) => void) => () => void
+  onFloatingLyricsClosed: (callback: () => void) => () => void
 }
 
 export {}

@@ -4,7 +4,7 @@ export type AppView = 'home' | 'search' | 'radio' | 'queue' | `playlist-${string
 
 interface UIState {
   activeView: AppView
-  isMiniPlayer: boolean
+
   /** Navigation history stack */
   history: AppView[]
   /** Forward stack for redo */
@@ -14,12 +14,12 @@ interface UIState {
   goForward: () => void
   canGoBack: () => boolean
   canGoForward: () => boolean
-  toggleMiniPlayer: () => void
+
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
   activeView: 'home',
-  isMiniPlayer: false,
+
   history: [],
   forwardStack: [],
 
@@ -55,9 +55,5 @@ export const useUIStore = create<UIState>((set, get) => ({
   canGoBack: () => get().history.length > 0,
   canGoForward: () => get().forwardStack.length > 0,
 
-  toggleMiniPlayer: () => set((s) => {
-    const next = !s.isMiniPlayer
-    window.vibestream?.setMiniPlayer?.(next)
-    return { isMiniPlayer: next }
-  }),
+
 }))

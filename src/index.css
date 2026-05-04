@@ -68,3 +68,12 @@ input[type='range'] {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Freeze all visual work when app is minimized/hidden */
+.app-frozen *,
+.app-frozen *::before,
+.app-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+  will-change: auto !important;
+}

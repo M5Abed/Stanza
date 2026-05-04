@@ -24,15 +24,17 @@ import {
   Upload,
   Copy,
   Check,
+  ExternalLink,
 } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { motion } from 'framer-motion'
 import { getDominantColor } from '@/utils/color'
 import { getHighResUrl, handleImgError } from '@/utils/image'
+import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
 type LyricsSource = 'local' | 'lrclib' | 'genius' | 'none'
 
-function Particles({ color }: { color: string }) {
+const Particles = React.memo(function Particles({ color, isPlaying }: { color: string; isPlaying: boolean }) {
   const [particles, setParticles] = useState<{id:number, x:number, y:number, s:number, d:number, delay:number}[]>([])
   
   useEffect(() => {
@@ -60,21 +62,21 @@ function Particles({ color }: { color: string }) {
              backgroundColor: color, 
              boxShadow: `0 0 12px ${color}` 
            }}
-           animate={{
+           animate={isPlaying ? {
               y: ['0vh', '-110vh'],
               x: ['0px', '25px', '-15px', '0px'],
               opacity: [0, 0.8, 0.8, 0]
-           }}
-           transition={{
+           } : undefined}
+           transition={isPlaying ? {
               y: { duration: p.d, repeat: Infinity, ease: 'linear', delay: p.delay },
               x: { duration: p.d * 0.4, repeat: Infinity, ease: 'easeInOut', delay: p.delay },
               opacity: { duration: p.d, repeat: Infinity, ease: 'linear', delay: p.delay }
-           }}
+           } : { duration: 0 }}
         />
       ))}
     </div>
   )
-}
+})
 
 function LyricsScroller({ 
   lines, 
@@ -308,7 +310,9 @@ export function LyricsPanel() {
   const next = usePlayerStore((s) => s.next)
   const previous = usePlayerStore((s) => s.previous)
   const requestSeek = usePlayerStore((s) => s.requestSeek)
-  const positionSec = usePlayerStore((s) => s.positionSec)
+  const positionSecRaw = usePlayerStore((s) => s.positionSec)
+  // Local position state for editor transport bar — updated via interval below, not store subscription
+  const [editorPos, setEditorPos] = useState(0)
   const durationSec = usePlayerStore((s) => s.durationSec)
   const volume = usePlayerStore((s) => s.volume)
   const setVolume = usePlayerStore((s) => s.setVolume)
@@ -327,7 +331,6 @@ export function LyricsPanel() {
   const [dominantColor, setDominantColor] = useState('#8B5CF6')
 
   const [dragPos, setDragPos] = useState<number | null>(null)
-  const displayPos = dragPos !== null ? dragPos : positionSec
 
   // Lyrics editor state
   const [isEditing, setIsEditing] = useState(false)
@@ -336,10 +339,51 @@ export function LyricsPanel() {
   const [editorTrackId, setEditorTrackId] = useState<string | null>(null) // locked to the song being edited
   const editorScrollRef = useRef<HTMLDivElement>(null)
 
+  // Poll positionSec at 4Hz while editing instead of subscribing to the 30Hz store updates.
+  // This prevents the entire editor (hundreds of EditorLine components) from re-rendering every 33ms.
+  useEffect(() => {
+    if (!isEditing || !visible) return
+    const id = setInterval(() => {
+      setEditorPos(usePlayerStore.getState().positionSec)
+    }, 250)
+    return () => clearInterval(id)
+  }, [isEditing, visible])
+  const positionSec = isEditing ? editorPos : positionSecRaw
+  const displayPos = dragPos !== null ? dragPos : positionSec
+
+  // Track last manual interaction to gate auto-sync (avoids fighting with rapid stamping)
+  const lastManualInteraction = useRef<number>(0)
+
   // Share dropdown state
   const [showShareMenu, setShowShareMenu] = useState(false)
   const [copiedFeedback, setCopiedFeedback] = useState(false)
   const shareMenuRef = useRef<HTMLDivElement>(null)
+
+  // Floating lyrics window
+  const [floatingOpen, setFloatingOpen] = useState(false)
+
+  // Relay lyrics state to floating window
+  useEffect(() => {
+    if (!floatingOpen || !window.vibestream) return
+    const interval = setInterval(() => {
+      const ps = usePlayerStore.getState()
+      window.vibestream!.sendFloatingLyricsState({
+        track: current ? { title: current.title, artist: current.artist ?? 'Unknown', thumbnailUrl: current.thumbnailUrl } : null,
+        lyrics: lyricsData ?? [],
+        position: ps.positionSec,
+        isPlaying: ps.isPlaying,
+      })
+    }, 200)
+    return () => clearInterval(interval)
+  }, [floatingOpen, current?.youtubeId, lyricsData])
+
+  // Listen for floating window closure
+  useEffect(() => {
+    const unsub = window.vibestream?.onFloatingLyricsClosed?.(() => {
+      setFloatingOpen(false)
+    })
+    return () => { unsub?.() }
+  }, [])
 
   // Close share menu on outside click
   useEffect(() => {
@@ -383,6 +427,7 @@ export function LyricsPanel() {
 
   /** Update a single line's timestamp */
   const updateLineTime = useCallback((idx: number, newTime: number) => {
+    lastManualInteraction.current = Date.now()
     setEditorLines(prev => prev.map((l, i) => i === idx ? { ...l, time: Math.max(0, newTime) } : l))
   }, [])
 
@@ -393,12 +438,20 @@ export function LyricsPanel() {
 
   /** Remove a line */
   const removeLine = useCallback((idx: number) => {
+    lastManualInteraction.current = Date.now()
     setEditorLines(prev => prev.filter((_, i) => i !== idx))
     setActiveLineIdx(prev => (prev >= idx && prev > 0 ? prev - 1 : prev))
   }, [])
 
+  /** Wrapper for manually setting active line — records interaction timestamp */
+  const manualSetActiveLineIdx = useCallback((idx: number) => {
+    lastManualInteraction.current = Date.now()
+    setActiveLineIdx(idx)
+  }, [])
+
   /** Add a new line after index */
   const addLineAfter = useCallback((idx: number) => {
+    lastManualInteraction.current = Date.now()
     const pos = usePlayerStore.getState().positionSec
     setEditorLines(prev => {
       const next = [...prev]
@@ -410,15 +463,10 @@ export function LyricsPanel() {
 
   /** Stamp current playback time onto a line */
   const stampLine = useCallback((idx: number) => {
+    lastManualInteraction.current = Date.now()
     const pos = usePlayerStore.getState().positionSec
     setEditorLines(prev => prev.map((l, i) => i === idx ? { ...l, time: Math.max(0, pos) } : l))
-    // Auto-advance to next line
-    setEditorLines(prev => {
-      if (idx < prev.length - 1) {
-        setActiveLineIdx(idx + 1)
-      }
-      return prev
-    })
+    setActiveLineIdx(idx)
   }, [])
 
   /** Scroll active line into view */
@@ -428,23 +476,30 @@ export function LyricsPanel() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activeLineIdx, isEditing])
 
-  /** Auto-sync active line with playback position when playing */
+  // Auto-sync the editor's blue highlight with playback position.
+  // Uses a polling interval + 2-second cooldown after manual interaction.
+  // This avoids depending on the reactive positionSec which would re-render the whole editor at 30Hz.
   useEffect(() => {
-    if (!isEditing || !isPlaying || editorLines.length === 0) return;
-    
-    let nextIdx = -1;
-    for (let i = 0; i < editorLines.length; i++) {
-      if (editorLines[i].time >= 0 && editorLines[i].time <= positionSec + 0.2) {
-        nextIdx = i;
-      } else if (editorLines[i].time >= 0 && editorLines[i].time > positionSec + 0.2) {
-        break;
+    if (!isEditing || editorLines.length === 0) return
+    const id = setInterval(() => {
+      // Skip if user interacted manually within the last 2 seconds
+      if (Date.now() - lastManualInteraction.current < 2000) return
+      const pos = usePlayerStore.getState().positionSec
+      // Find the editor line whose timestamp best matches the current playback position
+      let bestIdx = -1
+      for (let i = 0; i < editorLines.length; i++) {
+        if (editorLines[i].time >= 0 && editorLines[i].time <= pos + 0.2) {
+          bestIdx = i
+        } else if (editorLines[i].time > pos + 0.2) {
+          break
+        }
       }
-    }
-    
-    if (nextIdx !== -1 && nextIdx !== activeLineIdx) {
-      setActiveLineIdx(nextIdx);
-    }
-  }, [positionSec, isEditing, isPlaying, editorLines, activeLineIdx]);
+      if (bestIdx >= 0) {
+        setActiveLineIdx(prev => prev !== bestIdx ? bestIdx : prev)
+      }
+    }, 166) // Poll at 6Hz for responsive highlight sync
+    return () => clearInterval(id)
+  }, [isEditing, editorLines])
 
   // Reference for the lyrics scrolling container
   const containerRef = useRef<HTMLDivElement>(null)
@@ -500,10 +555,14 @@ export function LyricsPanel() {
   }, [current?.youtubeId, current?.title, current?.artist])
 
   useEffect(() => {
-    if (visible && current) {
+    if ((visible || floatingOpen) && current) {
+      // Reset scroll to top immediately for the new song
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0
+      }
       void fetchLyrics()
     }
-  }, [visible, current?.youtubeId, fetchLyrics])
+  }, [visible, floatingOpen, current?.youtubeId, fetchLyrics])
 
   /** Copy LRC text to clipboard */
   const handleCopyLyrics = useCallback(async () => {
@@ -571,15 +630,15 @@ export function LyricsPanel() {
   const panel = (
     <div className='fixed inset-0 z-[9999] flex overflow-hidden bg-[#121212]'>
       {/* Blurred Album Art Background */}
-      {current?.thumbnailUrl && (
+      {!isEditing && current?.thumbnailUrl && (
         <div 
           className='absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20 blur-[100px] saturate-200'
           style={{ backgroundImage: `url(${getHighResUrl(current.thumbnailUrl)})` }}
         />
       )}
-      <div className='absolute inset-0 bg-gradient-to-t from-[#121212] via-[#121212]/80 to-[#121212]/40' />
+      {!isEditing && <div className='absolute inset-0 bg-gradient-to-t from-[#121212] via-[#121212]/80 to-[#121212]/40' />}
 
-      <Particles color={dominantColor} />
+      {!isEditing && <Particles color={dominantColor} isPlaying={isPlaying} />}
 
       {/* Close Button */}
       <button
@@ -595,7 +654,8 @@ export function LyricsPanel() {
       </button>
 
       {/* Main Layout - Top aligned two columns */}
-      <div className='relative z-10 flex h-full w-full'>
+      {!isEditing && (
+        <div className='relative z-10 flex h-full w-full'>
         
         {/* Left Column: Player Info & Controls */}
         <div className='flex w-[40%] flex-col justify-center items-center px-16'>
@@ -618,7 +678,9 @@ export function LyricsPanel() {
           <div className='mt-10 flex flex-col items-center text-center'>
             <h2 className='text-3xl font-bold text-white line-clamp-2'>{current?.title ?? 'Nothing playing'}</h2>
             <div className='mt-2 flex items-center gap-3'>
-              <span className='text-xl font-medium text-[#b3b3b3] truncate'>{current?.artist ?? 'Unknown Artist'}</span>
+              <span className='text-xl font-medium text-[#b3b3b3] truncate'>
+                {current?.artist ? <ArtistLinks artist={current.artist} linkClassName='text-[#b3b3b3]' /> : 'Unknown Artist'}
+              </span>
             </div>
           </div>
 
@@ -729,7 +791,7 @@ export function LyricsPanel() {
                   onClick={handleImportLyrics}
                   className='flex items-center gap-2 px-6 py-3 bg-white/10 rounded-full text-white/80 font-semibold hover:bg-white/20 hover:text-white hover:scale-105 transition-all'
                 >
-                  <Upload className='h-5 w-5' /> Import .lrc
+                  <Download className='h-5 w-5' /> Import .lrc
                 </button>
               </div>
             </div>
@@ -739,41 +801,29 @@ export function LyricsPanel() {
         {/* Edit Lyrics Button (top-right of lyrics area) */}
         {!isEditing && lyricsData && (
           <div className='absolute top-8 right-24 z-20 flex items-center gap-2'>
-            {/* Share dropdown */}
-            <div className='relative' ref={shareMenuRef}>
-              <button
-                onClick={() => setShowShareMenu(!showShareMenu)}
-                className='flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-all text-sm font-medium'
-              >
-                <Share2 className='h-4 w-4' /> Share
-              </button>
-              {showShareMenu && (
-                <div className='absolute top-full right-0 mt-2 w-52 rounded-xl bg-[#282828] border border-white/10 shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200'>
-                  <button
-                    onClick={handleCopyLyrics}
-                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
-                  >
-                    {copiedFeedback ? <Check className='h-4 w-4 text-green-400' /> : <Copy className='h-4 w-4' />}
-                    {copiedFeedback ? 'Copied!' : 'Copy LRC Text'}
-                  </button>
-                  <button
-                    onClick={handleExportLyrics}
-                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
-                  >
-                    <Download className='h-4 w-4' />
-                    Export as .lrc File
-                  </button>
-                  <div className='border-t border-white/5' />
-                  <button
-                    onClick={handleImportLyrics}
-                    className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
-                  >
-                    <Upload className='h-4 w-4' />
-                    Import .lrc File
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Pop-out floating lyrics */}
+            <button
+              type='button'
+              onClick={async () => {
+                await window.vibestream?.openFloatingLyrics()
+                setFloatingOpen(true)
+                setVisible(false)
+                // Send initial state immediately
+                if (window.vibestream) {
+                  const ps = usePlayerStore.getState()
+                  window.vibestream.sendFloatingLyricsState({
+                    track: current ? { title: current.title, artist: current.artist ?? 'Unknown', thumbnailUrl: current.thumbnailUrl } : null,
+                    lyrics: lyricsData ?? [],
+                    position: ps.positionSec,
+                    isPlaying: ps.isPlaying,
+                  })
+                }
+              }}
+              className='flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-all text-sm font-medium'
+              title='Pop out floating lyrics'
+            >
+              <ExternalLink className='h-4 w-4' /> Float
+            </button>
             {/* Edit button */}
             <button
               onClick={() => {
@@ -788,6 +838,8 @@ export function LyricsPanel() {
             </button>
           </div>
         )}
+        </div>
+      )}
 
         {/* Lyrics Editor Overlay — Musixmatch-style (covers full panel) */}
         {isEditing && (
@@ -801,6 +853,41 @@ export function LyricsPanel() {
                 </span>
               </div>
               <div className='flex items-center gap-3'>
+                {/* Share dropdown */}
+                <div className='relative' ref={shareMenuRef}>
+                  <button
+                    onClick={() => setShowShareMenu(!showShareMenu)}
+                    className='flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all text-sm font-medium border border-white/10'
+                  >
+                    <Share2 className='h-4 w-4' /> Share
+                  </button>
+                  {showShareMenu && (
+                    <div className='absolute top-full right-0 mt-2 w-52 rounded-xl bg-[#282828] border border-white/10 shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200'>
+                      <button
+                        onClick={handleCopyLyrics}
+                        className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                      >
+                        {copiedFeedback ? <Check className='h-4 w-4 text-green-400' /> : <Copy className='h-4 w-4' />}
+                        {copiedFeedback ? 'Copied!' : 'Copy LRC Text'}
+                      </button>
+                      <button
+                        onClick={handleExportLyrics}
+                        className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                      >
+                        <Upload className='h-4 w-4' />
+                        Export as .lrc File
+                      </button>
+                      <div className='border-t border-white/5' />
+                      <button
+                        onClick={handleImportLyrics}
+                        className='flex w-full items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors'
+                      >
+                        <Download className='h-4 w-4' />
+                        Import .lrc File
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={async () => {
                     const trackId = editorTrackId
@@ -841,7 +928,7 @@ export function LyricsPanel() {
                     stampLine={stampLine}
                     updateLineText={updateLineText}
                     addLineAfter={addLineAfter}
-                    setActiveLineIdx={setActiveLineIdx}
+                    setActiveLineIdx={manualSetActiveLineIdx}
                   />
                 ))}
               </div>
@@ -850,28 +937,41 @@ export function LyricsPanel() {
             <div className='flex flex-col border-t border-white/10 shrink-0'>
               {/* Mini transport bar — seek + play/pause */}
               <div className='flex items-center gap-4 px-8 py-3 bg-white/[0.02]'>
-                <span className='text-xs font-mono text-white/50 w-10 text-right tabular-nums'>{fmt(positionSec)}</span>
+                <span className='text-xs font-mono text-white/50 w-10 text-right tabular-nums'>{fmt(displayPos)}</span>
                 <div className='flex-1 group relative flex h-3 items-center'>
                   <input
                     type='range'
                     min={0}
-                    max={durationSec > 0 ? durationSec : 100}
+                    max={dur > 0 ? dur : 100}
                     step={0.1}
-                    value={positionSec}
-                    onChange={(e) => requestSeek(Number(e.target.value))}
+                    value={displayPos}
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setDragPos(val)
+                      
+                      // Debounce the actual seek command
+                      if ((window as any)._lyricsSeekTimeout) {
+                        clearTimeout((window as any)._lyricsSeekTimeout)
+                      }
+                      
+                      ;(window as any)._lyricsSeekTimeout = setTimeout(() => {
+                        requestSeek(val)
+                        setDragPos(null)
+                      }, 250)
+                    }}
                     className='absolute inset-0 h-full w-full opacity-0 cursor-pointer z-10'
                   />
                   <div className='absolute h-1 w-full rounded-full bg-white/10' />
                   <div
                     className='absolute h-1 rounded-full bg-blue-500 transition-[width]'
-                    style={{ width: `${durationSec > 0 ? (positionSec / durationSec) * 100 : 0}%` }}
+                    style={{ width: `${dur > 0 ? (Math.min(displayPos, dur) / dur) * 100 : 0}%` }}
                   />
                   <div
                     className='absolute h-3 w-3 -ml-1.5 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity'
-                    style={{ left: `${durationSec > 0 ? (positionSec / durationSec) * 100 : 0}%` }}
+                    style={{ left: `${dur > 0 ? (Math.min(displayPos, dur) / dur) * 100 : 0}%` }}
                   />
                 </div>
-                <span className='text-xs font-mono text-white/50 w-10 tabular-nums'>{fmt(durationSec)}</span>
+                <span className='text-xs font-mono text-white/50 w-10 tabular-nums'>{fmt(dur)}</span>
                 <button
                   onClick={toggle}
                   className='flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors ml-1'
@@ -891,6 +991,7 @@ export function LyricsPanel() {
                   </button>
                   <button
                     onClick={() => {
+                      lastManualInteraction.current = Date.now()
                       const pos = usePlayerStore.getState().positionSec
                       setEditorLines([{ time: pos, text: '' }])
                       setActiveLineIdx(0)
@@ -902,14 +1003,14 @@ export function LyricsPanel() {
                 </div>
                 <div className='flex items-center gap-3'>
                   <button
-                    onClick={() => setActiveLineIdx(Math.max(0, activeLineIdx - 1))}
+                    onClick={() => { lastManualInteraction.current = Date.now(); setActiveLineIdx(Math.max(0, activeLineIdx - 1)) }}
                     disabled={activeLineIdx <= 0}
                     className='w-20 h-10 flex items-center justify-center bg-white/5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-default border border-white/10'
                   >
                     <ChevronLeft className='h-5 w-5 rotate-90' />
                   </button>
                   <button
-                    onClick={() => setActiveLineIdx(Math.min(editorLines.length - 1, activeLineIdx + 1))}
+                    onClick={() => { lastManualInteraction.current = Date.now(); setActiveLineIdx(Math.min(editorLines.length - 1, activeLineIdx + 1)) }}
                     disabled={activeLineIdx >= editorLines.length - 1}
                     className='w-20 h-10 flex items-center justify-center bg-white/5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-default border border-white/10'
                   >
@@ -920,7 +1021,6 @@ export function LyricsPanel() {
             </div>
           </div>
         )}
-      </div>
     </div>
   )
 

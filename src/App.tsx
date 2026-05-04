@@ -2,12 +2,15 @@ import { PlayerAudioBridge } from '@/components/player/PlayerAudioBridge'
 import { ThumbarManager } from '@/components/ThumbarManager'
 import { PlayerBar } from '@/components/player/PlayerBar'
 import { QueuePanel } from '@/components/queue/QueuePanel'
+import { ContextMenu } from '@/components/ui/ContextMenu'
 import { SearchView } from '@/components/search/SearchView'
 import { HomeView } from '@/components/home/HomeView'
 import { PlaylistView } from '@/components/playlists/PlaylistView'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { useUIStore } from '@/stores/useUIStore'
+import { useAppVisibilityStore } from '@/stores/useAppVisibilityStore'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect } from 'react'
 
 function BrowserFallback() {
   return (
@@ -27,6 +30,8 @@ import { RadioView } from '@/components/radio/RadioView'
 import { ArtistView } from '@/components/artist/ArtistView'
 import { ArtistAllSongsView } from '@/components/artist/ArtistAllSongsView'
 import { AlbumView } from '@/components/album/AlbumView'
+import { FloatingLyricsView } from '@/components/player/FloatingLyricsView'
+import mascotUrl from '@/assets/mascot.png'
 
 function NavHeader() {
   const canGoBack = useUIStore((s) => s.history.length > 0)
@@ -82,6 +87,23 @@ export default function App() {
     return <BrowserFallback />
   }
 
+  // Floating lyrics mode — render minimal lyrics-only UI
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('mode') === 'floating-lyrics') {
+    return <FloatingLyricsView />
+  }
+
+  const appVisible = useAppVisibilityStore((s) => s.visible)
+
+  // When minimized, inject a global CSS class that kills all animations & transitions
+  useEffect(() => {
+    if (!appVisible) {
+      document.documentElement.classList.add('app-frozen')
+    } else {
+      document.documentElement.classList.remove('app-frozen')
+    }
+  }, [appVisible])
+
   return (
     <div className='flex h-screen max-h-screen flex-col overflow-hidden bg-transparent text-theme-text relative'>
       {/* Custom Window Header */}
@@ -103,18 +125,43 @@ export default function App() {
         <Sidebar />
         
         {/* Main Content Area */}
-        <main className='flex flex-1 flex-col overflow-y-auto rounded-3xl bg-theme-surface/70 backdrop-blur-2xl shadow-xl border border-white/5'>
-          <NavHeader />
-
-
-          <div className='flex-1 p-6'>
-            <MainContent />
+        <div className='flex flex-1 min-w-0 relative overflow-hidden rounded-3xl bg-theme-surface/70 backdrop-blur-2xl shadow-xl border border-white/5'>
+          {/* Mascot watermark — behind content, doesn't scroll */}
+          <div
+            className='pointer-events-none absolute bottom-0 right-0 z-[1] select-none'
+            style={{
+              width: '416px',
+              height: '546px',
+            }}
+          >
+            <img
+              src={mascotUrl}
+              alt=''
+              draggable={false}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                objectPosition: 'bottom right',
+                opacity: 0.14,
+                filter: 'brightness(0.6) grayscale(0.2)',
+                maskImage: 'linear-gradient(to top, black 40%, transparent 85%)',
+                WebkitMaskImage: 'linear-gradient(to top, black 40%, transparent 85%)',
+              }}
+            />
           </div>
-        </main>
+          <main className='flex flex-1 flex-col overflow-y-auto relative z-[2]'>
+            <NavHeader />
+            <div className='flex-1 p-6'>
+              <MainContent />
+            </div>
+          </main>
+        </div>
       </div>
 
       {/* Bottom Section: PlayerBar */}
       <PlayerBar />
+      <ContextMenu />
     </div>
   )
 }

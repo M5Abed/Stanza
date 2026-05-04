@@ -4,6 +4,8 @@ import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { Play, Edit2, Check, X, Clock, Music2, Trash2, Heart, Download, WifiOff } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
+import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
 export function PlaylistView({ playlistId }: { playlistId: string }) {
   const { playlists, renamePlaylist, removeTrack, deletePlaylist } = usePlaylistsStore()
@@ -12,16 +14,43 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   
   const current = usePlayerStore((s) => s.queue[s.currentIndex])
   const loadPlaylist = usePlayerStore((s) => s.loadPlaylist)
-
+  const openMenu = useContextMenuStore(s => s.openMenu)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Batch download progress tracking
+  const [batchState, setBatchState] = useState<'idle' | 'downloading' | 'done'>(
+    playlist?.offlineEnabled ? 'done' : 'idle'
+  )
+  const [batchProgress, setBatchProgress] = useState(0)
+  const batchRef = useRef<{ total: number; completed: Set<string> }>({ total: 0, completed: new Set() })
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus()
     }
   }, [isEditing])
+
+  // Listen for per-song download progress during batch download
+  useEffect(() => {
+    if (!window.vibestream || batchState !== 'downloading') return
+    const trackIds = new Set(playlist?.tracks.map(t => t.song.youtubeId) ?? [])
+    const unsub = window.vibestream.onDownloadProgress((data) => {
+      if (!trackIds.has(data.youtubeId)) return
+      const ref = batchRef.current
+      if (data.progress >= 100) ref.completed.add(data.youtubeId)
+      const completedFrac = ref.completed.size / ref.total
+      const currentFrac = ref.completed.has(data.youtubeId) ? 0 : (data.progress / 100) / ref.total
+      const overall = Math.min((completedFrac + currentFrac) * 100, 100)
+      setBatchProgress(overall)
+      if (ref.completed.size >= ref.total) {
+        setBatchState('done')
+        setBatchProgress(100)
+      }
+    })
+    return unsub
+  }, [batchState, playlist?.tracks])
 
   if (!playlist) return <div className='p-6 text-theme-subtext font-medium'>Playlist not found.</div>
 
@@ -37,6 +66,38 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSaveRename()
     if (e.key === 'Escape') setIsEditing(false)
+  }
+
+  const handleOfflineToggle = async () => {
+    if (offlineEnabled) {
+      setOfflineEnabled(false)
+      setBatchState('idle')
+      setBatchProgress(0)
+      batchRef.current = { total: 0, completed: new Set() }
+      try { await window.vibestream?.setPlaylistOffline(playlist.id, false) }
+      catch { setOfflineEnabled(true); setBatchState('done') }
+      return
+    }
+    setOfflineEnabled(true)
+    const needDownload: string[] = []
+    if (window.vibestream) {
+      for (const t of playlist.tracks) {
+        try {
+          const res = await window.vibestream.isDownloaded(t.song.youtubeId)
+          if (!res?.downloaded) needDownload.push(t.song.youtubeId)
+        } catch {}
+      }
+    }
+    if (needDownload.length === 0) {
+      setBatchState('done')
+      setBatchProgress(100)
+    } else {
+      batchRef.current = { total: needDownload.length, completed: new Set() }
+      setBatchState('downloading')
+      setBatchProgress(0)
+    }
+    try { await window.vibestream?.setPlaylistOffline(playlist.id, true) }
+    catch { setOfflineEnabled(false); setBatchState('idle'); setBatchProgress(0) }
   }
 
   // Calculate total duration
@@ -134,19 +195,48 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
         >
           <Play className='h-6 w-6 ml-1 fill-current' />
         </button>
-        {/* Offline Toggle */}
-        <button
-          onClick={async () => {
-            const next = !offlineEnabled
-            setOfflineEnabled(next)
-            await window.vibestream?.setPlaylistOffline(playlist.id, next)
-          }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${offlineEnabled ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-white/5 text-theme-subtext hover:text-white hover:bg-white/10 border border-white/10'}`}
-          title={offlineEnabled ? 'Offline mode enabled' : 'Enable offline mode'}
-        >
-          {offlineEnabled ? <Check className='h-4 w-4' /> : <Download className='h-4 w-4' />}
-          {offlineEnabled ? 'Available Offline' : 'Download All'}
-        </button>
+        {/* Offline Toggle — hide for virtual playlists */}
+        {playlist.name !== 'Downloaded Songs' && (
+          <button
+            onClick={handleOfflineToggle}
+            disabled={batchState === 'downloading'}
+            className={`relative flex items-center gap-2.5 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
+              batchState === 'done'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : batchState === 'downloading'
+                ? 'bg-theme-accent/10 text-theme-accent border border-theme-accent/30 cursor-wait'
+                : 'bg-white/5 text-theme-subtext hover:text-white hover:bg-white/10 border border-white/10'
+            }`}
+            title={batchState === 'done' ? 'Offline mode enabled' : batchState === 'downloading' ? `Downloading ${Math.round(batchProgress)}%` : 'Enable offline mode'}
+          >
+            {batchState === 'downloading' ? (
+              <div className='relative flex items-center justify-center' style={{ width: 20, height: 20 }}>
+                <svg className='-rotate-90' width='20' height='20' viewBox='0 0 20 20'>
+                  <circle cx='10' cy='10' r='8' fill='none' stroke='currentColor' strokeWidth='2.5' opacity='0.15' />
+                  <circle
+                    cx='10' cy='10' r='8' fill='none' stroke='currentColor' strokeWidth='2.5'
+                    strokeDasharray={`${2 * Math.PI * 8}`}
+                    strokeDashoffset={`${2 * Math.PI * 8 * (1 - batchProgress / 100)}`}
+                    strokeLinecap='round'
+                    style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                  />
+                </svg>
+                <span className='absolute inset-0 flex items-center justify-center text-[7px] font-black leading-none'>
+                  {Math.round(batchProgress)}
+                </span>
+              </div>
+            ) : batchState === 'done' ? (
+              <Check className='h-4 w-4' />
+            ) : (
+              <Download className='h-4 w-4' />
+            )}
+            {batchState === 'done'
+              ? 'Available Offline'
+              : batchState === 'downloading'
+              ? `Downloading ${Math.round(batchProgress)}%`
+              : 'Download All'}
+          </button>
+        )}
       </div>
 
       {/* Track List */}
@@ -168,7 +258,8 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
               <div 
                 key={track.youtubeId + idx}
                 className={`group grid grid-cols-[20px_1fr_minmax(120px,200px)_60px_40px] items-center gap-6 rounded-xl px-4 py-3 transition-colors hover:bg-white/5 cursor-pointer ${isPlayingThis ? 'bg-white/10 shadow-sm' : ''}`}
-                onDoubleClick={() => loadPlaylist(playlist.tracks.map(p => p.song), idx)}
+                onClick={() => loadPlaylist(playlist.tracks.map(p => p.song), idx)}
+                onContextMenu={(e) => openMenu(e, track as any)}
               >
                 <div className='flex items-center justify-center relative w-6 h-6 mx-auto'>
                   <span className='text-sm font-medium text-theme-subtext text-center absolute inset-0 group-hover:opacity-0 transition-opacity flex items-center justify-center'>{idx + 1}</span>
@@ -193,7 +284,7 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
                   </div>
                   <div className='flex flex-col truncate'>
                     <span className={`truncate font-semibold ${isPlayingThis ? 'text-theme-accent' : 'text-white/95'}`}>{track.title}</span>
-                    {track.artist && <span className='truncate text-xs text-theme-subtext mt-0.5'>{track.artist}</span>}
+                    {track.artist && <span className='truncate text-xs text-theme-subtext mt-0.5'><ArtistLinks artist={track.artist} linkClassName='text-theme-subtext' /></span>}
                   </div>
                 </div>
 

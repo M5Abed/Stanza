@@ -60,31 +60,108 @@ export function teeStreamToCache(
 
   const reader = inputStream.getReader()
 
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
+  // Queue to buffer chunks. This drains the YouTube connection as fast as possible 
+  // so YouTube doesn't drop the connection due to backpressure/idleness.
+  // Cap at 64 chunks (~10-16 MB) to prevent unbounded memory growth that could
+  // trigger GC pauses and cause audio stuttering.
+  const MAX_QUEUE_SIZE = 64
+  const queue: Uint8Array[] = []
+  let queueBytes = 0
+  let streamError: any = null
+  let streamDone = false
+  let resolvePull: (() => void) | null = null
+  let resolveBackpressure: (() => void) | null = null
+
+  // Continuously read in the background
+  ;(async () => {
+    try {
+      while (true) {
+        // Backpressure: wait if consumer is too slow and queue is full
+        while (queue.length >= MAX_QUEUE_SIZE && !aborted) {
+          await new Promise<void>(resolve => { resolveBackpressure = resolve })
+        }
+        if (aborted) break
+
         const { done, value } = await reader.read()
         if (done) {
-          controller.close()
+          streamDone = true
           if (!aborted) fileStream.end()
-          return
+          ;(resolvePull as any)?.()
+          break
         }
-        controller.enqueue(value)
-        if (!aborted) {
+        if (!aborted && value) {
           fileStream.write(value)
+          queue.push(value)
+          queueBytes += value.byteLength
+          ;(resolvePull as any)?.()
         }
-      } catch (err) {
-        aborted = true
+      }
+    } catch (err) {
+      streamError = err
+      ;(resolvePull as any)?.()
+      if (!aborted) {
         fileStream.destroy()
-        controller.error(err)
+        try { fs.unlinkSync(cachePath) } catch {}
+      }
+    }
+  })()
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (queue.length > 0) {
+        const chunk = queue.shift()!
+        queueBytes -= chunk.byteLength
+        controller.enqueue(chunk)
+        // Release backpressure so the background reader can continue
+        if (resolveBackpressure) {
+          const r = resolveBackpressure
+          resolveBackpressure = null
+          r()
+        }
+        return
+      }
+      if (streamError) {
+        controller.error(streamError)
+        return
+      }
+      if (streamDone) {
+        controller.close()
+        return
+      }
+      // Wait for more data to arrive
+      await new Promise<void>(resolve => {
+        resolvePull = () => {
+          resolvePull = null
+          resolve()
+        }
+      })
+      
+      if (queue.length > 0) {
+        const chunk = queue.shift()!
+        queueBytes -= chunk.byteLength
+        controller.enqueue(chunk)
+        if (resolveBackpressure) {
+          const r = resolveBackpressure
+          resolveBackpressure = null
+          r()
+        }
+      } else if (streamError) {
+        controller.error(streamError)
+      } else if (streamDone) {
+        controller.close()
       }
     },
     cancel() {
       aborted = true
+      // Release any blocked background reader
+      if (resolveBackpressure) {
+        const r = resolveBackpressure
+        resolveBackpressure = null
+        r()
+      }
       reader.cancel().catch(() => {})
       fileStream.destroy()
-      // Remove incomplete cache file
-      try { fs.unlinkSync(cachePath) } catch { /* ignore */ }
+      try { fs.unlinkSync(cachePath) } catch {}
     }
   })
 }

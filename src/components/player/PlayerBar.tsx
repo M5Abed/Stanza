@@ -15,16 +15,18 @@ import {
   Download,
   Check,
   Loader2,
-  PictureInPicture2,
+
   ListMusic
 } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { useUIStore, AppView } from '@/stores/useUIStore'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { LyricsPanel } from './LyricsPanel'
 import { motion } from 'framer-motion'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useThemeStore } from '@/stores/useThemeStore'
+import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
 function fmt(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -55,6 +57,7 @@ export function PlayerBar() {
   const requestSeek = usePlayerStore((s) => s.requestSeek)
   const setShuffle = usePlayerStore((s) => s.setShuffle)
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat)
+  const openMenu = useContextMenuStore(s => s.openMenu)
 
   const { isLiked, toggleLiked } = usePlaylistsStore()
   
@@ -144,7 +147,12 @@ export function PlayerBar() {
           />
         )}
         {/* Left Column: Track Info */}
-        <div className='flex w-[30%] min-w-[180px] items-center gap-4'>
+        <div 
+          className='flex w-[30%] min-w-[180px] items-center gap-4 cursor-pointer rounded-xl hover:bg-white/5 transition-colors p-1 -ml-1'
+          onContextMenu={(e) => {
+            if (current) openMenu(e, current)
+          }}
+        >
         <div className='group relative h-14 w-14 shrink-0 overflow-hidden rounded bg-[#282828] shadow-lg'>
           {/* Fallback placeholder (always rendered behind) */}
           <div className='absolute inset-0 flex items-center justify-center text-xs text-theme-subtext z-0'>♪</div>
@@ -168,12 +176,9 @@ export function PlayerBar() {
         <div className='flex min-w-0 flex-col py-1'>
           <span className='truncate text-sm font-medium text-white'>{current?.title ?? 'Nothing playing'}</span>
           {current?.artist ? (
-            <button
-               onClick={() => setActiveView(`artist-${current.artist}` as AppView)}
-               className='truncate text-left text-xs text-theme-subtext/80 hover:text-white transition-colors'
-            >
-              {current.artist}
-            </button>
+            <span className='truncate text-left text-xs text-theme-subtext/80'>
+              <ArtistLinks artist={current.artist} linkClassName='text-theme-subtext/80' />
+            </span>
           ) : (
             <span className='truncate text-left text-xs text-theme-subtext/80'>Pick a song from search</span>
           )}
@@ -313,14 +318,7 @@ export function PlayerBar() {
           >
             {isFullscreen ? <Minimize2 className='h-[18px] w-[18px]' /> : <Maximize2 className='h-[18px] w-[18px]' />}
           </button>
-          <button
-            type='button'
-            onClick={() => useUIStore.getState().toggleMiniPlayer()}
-            className='ml-1 text-theme-subtext transition-colors hover:text-white'
-            title='Mini Player'
-          >
-            <PictureInPicture2 className='h-[18px] w-[18px]' />
-          </button>
+
         </div>
       </div>
     </footer>

@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import { getCachedPath, getMimeForPath, teeStreamToCache } from './audio-cache'
+import { getInnertube } from './innertube'
 
 const execFileAsync = promisify(execFile)
 
@@ -77,7 +78,7 @@ function isValidVideoId(id: string): boolean {
 const urlCache = new Map<string, { url: string; mimeType: string; ext: string; ts: number }>()
 const URL_CACHE_TTL = 5 * 60 * 1000
 
-async function getAudioUrlViaYtDlp(videoId: string): Promise<{ url: string; mimeType: string; ext: string }> {
+async function getAudioUrlViaYtDlp(videoId: string, allowFallback = true): Promise<{ url: string; mimeType: string; ext: string }> {
   const cached = urlCache.get(videoId)
   if (cached && Date.now() - cached.ts < URL_CACHE_TTL) {
     return { url: cached.url, mimeType: cached.mimeType, ext: cached.ext }
@@ -85,14 +86,55 @@ async function getAudioUrlViaYtDlp(videoId: string): Promise<{ url: string; mime
 
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`
   const ytDlpBin = getYtDlpPath()
-  const { stdout } = await execFileAsync(ytDlpBin, [
-    '--get-url',
-    '--print', '%(ext)s',
-    '-f', 'bestaudio',
-    '--no-playlist',
-    '--no-warnings',
-    ytUrl,
-  ], { timeout: 15_000 })
+  
+  let stdout: string
+  try {
+    const result = await execFileAsync(ytDlpBin, [
+      '--get-url',
+      '--print', '%(ext)s',
+      '-f', 'bestaudio',
+      '--no-playlist',
+      '--no-warnings',
+      ytUrl,
+    ], { timeout: 15_000 })
+    stdout = result.stdout
+  } catch (err: any) {
+    const errorOutput = err.stderr || err.message || ''
+    if (allowFallback && errorOutput.includes('Sign in to confirm your age')) {
+      console.warn(`[vibestream] Age restriction hit for ${videoId}. Searching for safe fallback...`)
+      try {
+        const yt = await getInnertube()
+        const info = await yt.getBasicInfo(videoId)
+        const title = info.basic_info.title
+        const author = info.basic_info.author
+        
+        if (title && author) {
+          const search = await yt.music.search(`${title} ${author}`, { type: 'song' })
+          for (const section of (search.contents as any[]) || []) {
+            for (const item of section.contents || []) {
+              const fallbackVid = item.id || item.video_id
+              if (fallbackVid && fallbackVid !== videoId) {
+                try {
+                  const fallbackInfo = await yt.getBasicInfo(fallbackVid)
+                  if (fallbackInfo.basic_info.is_family_safe !== false) {
+                    console.log(`[vibestream] Found safe fallback video: ${fallbackVid} (Title: ${item.title?.text || item.title})`)
+                    // Attempt to resolve the safe fallback (prevent recursive fallback)
+                    return await getAudioUrlViaYtDlp(fallbackVid, false)
+                  }
+                } catch (e) {
+                  // Ignore info fetch errors for fallbacks
+                }
+              }
+            }
+          }
+        }
+      } catch (fallbackErr) {
+        console.error(`[vibestream] Fallback search failed for ${videoId}:`, fallbackErr)
+      }
+      throw new Error('Video is age restricted and no safe fallback could be found')
+    }
+    throw err
+  }
 
   const lines = stdout.trim().split('\n').map(l => l.trim()).filter(Boolean)
   if (lines.length < 2) {
@@ -187,8 +229,9 @@ export function registerVibestreamProtocolHandler(): void {
 
       const fetchHeaders: Record<string, string> = { 'User-Agent': YT_UA }
       // Only pass Range for remote when NOT the initial request (we need the full stream for caching)
-      // For seeks on a non-cached file, pass the Range through
-      if (rangeHeader) {
+      // Sending 'bytes=0-' to YouTube often causes them to chunk the response to 2MB and drop the connection,
+      // which causes audio cuts/glitches. Ignoring it ensures a continuous 200 OK stream.
+      if (rangeHeader && rangeHeader !== 'bytes=0-') {
         fetchHeaders['Range'] = rangeHeader
       }
 
@@ -218,9 +261,10 @@ export function registerVibestreamProtocolHandler(): void {
         return new Response('Upstream fetch failed', { status: 502 })
       }
 
-      // Auto-cache: tee the full stream to a local file (only on non-Range requests)
+      // Auto-cache: tee the full stream to a local file
+      // Howler HTML5 audio tag sends 'bytes=0-' initially, which we can safely cache as it represents the full stream
       let responseBody: any = upstream.body
-      if (!rangeHeader) {
+      if (!rangeHeader || rangeHeader === 'bytes=0-') {
         responseBody = teeStreamToCache(videoId, upstream.body as any, `.${ext}`)
       }
 

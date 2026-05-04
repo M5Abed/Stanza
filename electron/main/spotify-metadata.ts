@@ -162,10 +162,22 @@ export async function spotifySearchMetadata(query: string, limit: number): Promi
 }
 
 /**
- * Quick single-track cover lookup via Spotify.
+ * Quick single-track cover lookup via Spotify — with in-memory cache.
  * Returns the best album art URL (i.scdn.co, permanent, high-res) or null.
  */
+const coverCache = new Map<string, { url: string | null; ts: number }>()
+const COVER_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+const COVER_CACHE_MAX = 500
+
 export async function spotifyFetchCoverUrl(title: string, artist: string): Promise<string | null> {
+  const cacheKey = `${title.toLowerCase()}|${artist.toLowerCase()}`
+
+  // Check cache
+  const cached = coverCache.get(cacheKey)
+  if (cached && Date.now() - cached.ts < COVER_CACHE_TTL) {
+    return cached.url
+  }
+
   try {
     const creds = getCredentials()
     if (!creds) return null
@@ -189,7 +201,16 @@ export async function spotifyFetchCoverUrl(title: string, artist: string): Promi
     }
 
     const images = data.tracks?.items?.[0]?.album?.images
-    return bestImageUrl(images)
+    const result = bestImageUrl(images)
+
+    // Evict oldest entries if cache is full
+    if (coverCache.size >= COVER_CACHE_MAX) {
+      const oldest = coverCache.keys().next().value
+      if (oldest) coverCache.delete(oldest)
+    }
+    coverCache.set(cacheKey, { url: result, ts: Date.now() })
+
+    return result
   } catch {
     return null
   }

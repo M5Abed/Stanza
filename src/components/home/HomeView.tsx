@@ -3,13 +3,23 @@ import { motion } from 'framer-motion'
 import { Plus, Play } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useRadioStore } from '@/stores/useRadioStore'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
 
 export function HomeView() {
-  const { queue, currentIndex, playQueueIndex, playTrackNow, addToQueue } = usePlayerStore()
-  const { suggestions, fetchRecommendations } = useRadioStore()
+  const queue = usePlayerStore(s => s.queue)
+  const currentIndex = usePlayerStore(s => s.currentIndex)
+  const history = usePlayerStore(s => s.history)
+  const playQueueIndex = usePlayerStore(s => s.playQueueIndex)
+  const playTrackNow = usePlayerStore(s => s.playTrackNow)
+  const addToQueue = usePlayerStore(s => s.addToQueue)
+  const loadPlaylist = usePlayerStore(s => s.loadPlaylist)
+  const repeat = usePlayerStore(s => s.repeat)
+  const suggestions = useRadioStore(s => s.suggestions)
+  const fetchRecommendations = useRadioStore(s => s.fetchRecommendations)
+  const openMenu = useContextMenuStore(s => s.openMenu)
 
-  // Build a rudimentary 'Recently Played' from the queue history up to the current track
-  const recent = queue.slice(0, currentIndex + 1).reverse().slice(0, 8)
+  // Use the new dedicated history array, taking up to the 8 most recent unique tracks
+  const recent = history.slice(0, 8)
 
   return (
     <div className='flex flex-col gap-8'>
@@ -28,7 +38,8 @@ export function HomeView() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
                 className='group relative flex items-center gap-4 rounded-2xl bg-theme-surface/40 backdrop-blur-md p-3 transition-all hover:bg-white/10 hover:-translate-y-1 hover:shadow-xl hover:shadow-theme-accent/10 cursor-pointer overflow-hidden border border-white/5'
-                onClick={() => playQueueIndex(queue.length - 1 - i)}
+                onClick={() => playTrackNow(track)}
+                onContextMenu={(e) => openMenu(e, track)}
               >
                 <div className='h-16 w-16 shrink-0 overflow-hidden rounded-xl shadow-lg'>
                   {track.thumbnailUrl ? (
@@ -66,6 +77,7 @@ export function HomeView() {
                <div 
                  key={`${track.youtubeId}-${i}-home`}
                  className='group flex flex-col gap-3 rounded-2xl p-4 transition-all hover:bg-white/5 bg-theme-surface/30 border border-white/5 shadow-md relative'
+                 onContextMenu={(e) => openMenu(e, track)}
                >
                  <div className='relative aspect-square w-full overflow-hidden rounded-xl bg-stone-800 shadow-lg'>
                    {track.thumbnailUrl && (
@@ -73,7 +85,13 @@ export function HomeView() {
                    )}
                    <div className='absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center gap-4'>
                      <button
-                       onClick={() => playTrackNow(track)}
+                       onClick={() => {
+                         if (repeat === 'all' && suggestions.length > 1) {
+                           loadPlaylist(suggestions, i)
+                         } else {
+                           playTrackNow(track)
+                         }
+                       }}
                        className='flex h-12 w-12 items-center justify-center rounded-full bg-theme-accent text-white shadow-[0_0_20px_rgba(236,72,153,0.5)] hover:scale-110 active:scale-95 transition-all'
                      >
                        <Play className='h-6 w-6 ml-1 fill-current' />

@@ -8,6 +8,23 @@ export interface LyricsResult {
   lrcRaw: string | null
 }
 
+/**
+ * In-memory lyrics cache — avoids re-fetching from LRCLIB/Genius every time
+ * the user opens lyrics for the same song. Keyed by youtubeId.
+ * ManualLyrics (user edits) always take priority and evict cached entries.
+ */
+const lyricsCache = new Map<string, LyricsResult>()
+const LYRICS_CACHE_MAX = 500
+
+function cacheSet(key: string, value: LyricsResult): void {
+  // Evict oldest entry if cache is full
+  if (lyricsCache.size >= LYRICS_CACHE_MAX) {
+    const oldest = lyricsCache.keys().next().value
+    if (oldest) lyricsCache.delete(oldest)
+  }
+  lyricsCache.set(key, value)
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -61,15 +78,25 @@ async function fetchLrclibLrc(artist: string, track: string): Promise<string | n
  * Level 1: ManualLyrics in SQLite.
  * Level 2: LRCLIB (synced preferred).
  * Level 3: Genius (scraped from page).
+ *
+ * Results from Level 2/3 are cached in-memory so re-opening lyrics is instant.
  */
 export async function aggregateLyrics(
   db: PrismaClient,
   params: { youtubeId: string; title: string; artist: string | null },
 ): Promise<LyricsResult> {
-  // Level 1: Local manual lyrics
+  // Level 1: Local manual lyrics (always wins, evicts any stale cache)
   const local = await db.manualLyrics.findUnique({ where: { youtubeId: params.youtubeId } })
   if (local?.lrcRaw?.trim()) {
+    // Evict any cached remote result so user edits take priority
+    lyricsCache.delete(params.youtubeId)
     return { source: 'local', lrcRaw: local.lrcRaw }
+  }
+
+  // Check in-memory cache before making any remote calls
+  const cached = lyricsCache.get(params.youtubeId)
+  if (cached) {
+    return cached
   }
 
   const terms = await loadCleaningTerms(db)
@@ -79,19 +106,26 @@ export async function aggregateLyrics(
   // Level 2: LRCLIB
   const remote = await fetchLrclibLrc(artist, track)
   if (remote) {
-    return { source: 'lrclib', lrcRaw: remote }
+    const result: LyricsResult = { source: 'lrclib', lrcRaw: remote }
+    cacheSet(params.youtubeId, result)
+    return result
   }
 
   // Level 3: Genius
   try {
     const genius = await fetchGeniusLyrics(track, artist)
     if (genius) {
-      return { source: 'genius', lrcRaw: genius }
+      const result: LyricsResult = { source: 'genius', lrcRaw: genius }
+      cacheSet(params.youtubeId, result)
+      return result
     }
   } catch (e) {
     console.error('[lyrics:genius]', e)
   }
 
-  return { source: 'none', lrcRaw: null }
+  // Cache the "none" result too to avoid repeated failed lookups
+  const noneResult: LyricsResult = { source: 'none', lrcRaw: null }
+  cacheSet(params.youtubeId, noneResult)
+  return noneResult
 }
 

@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 contextBridge.exposeInMainWorld('vibestream', {
   searchMusic: (query: string) => invoke(IpcChannels.searchMusic, { query }),
   searchArtists: (query: string) => invoke(IpcChannels.searchArtists, { query }),
+  searchPlaylists: (query: string) => invoke(IpcChannels.searchPlaylists, { query }),
   getPlaybackUrl: (youtubeId: string) => invoke<{ playbackUrl: string }>(IpcChannels.getPlaybackUrl, { youtubeId }),
   songUpsert: (payload: unknown) => invoke(IpcChannels.songUpsert, payload),
   saveManualLyrics: (youtubeId: string, lrcRaw: string) =>
@@ -102,11 +103,32 @@ contextBridge.exposeInMainWorld('vibestream', {
     ipcRenderer.on(IpcChannels.downloadProgress, handler)
     return () => { ipcRenderer.off(IpcChannels.downloadProgress, handler) }
   },
-  // Mini-player
-  setMiniPlayer: (enabled: boolean) => invoke<void>(IpcChannels.setMiniPlayer, enabled),
   // Lyrics sharing
   exportLyrics: (lrcRaw: string, suggestedName: string) =>
     invoke<{ ok: boolean; path?: string }>(IpcChannels.lyricsExport, { lrcRaw, suggestedName }),
   importLyrics: () =>
     invoke<{ ok: boolean; lrcRaw: string | null }>(IpcChannels.lyricsImport),
+  // App visibility
+  onAppVisibilityChange: (callback: (data: { visible: boolean }) => void) => {
+    const handler = (_event: any, data: { visible: boolean }) => callback(data)
+    ipcRenderer.on(IpcChannels.appVisibilityChange, handler)
+    return () => { ipcRenderer.off(IpcChannels.appVisibilityChange, handler) }
+  },
+  // Floating lyrics window
+  openFloatingLyrics: () => invoke<{ ok: boolean }>(IpcChannels.floatingLyricsOpen),
+  closeFloatingLyrics: () => invoke<{ ok: boolean }>(IpcChannels.floatingLyricsClose),
+  toggleFloatingLyricsPin: () => invoke<{ pinned: boolean }>(IpcChannels.floatingLyricsTogglePin),
+  sendFloatingLyricsState: (data: any) => {
+    ipcRenderer.send(IpcChannels.floatingLyricsState, data)
+  },
+  onFloatingLyricsState: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IpcChannels.floatingLyricsState, handler)
+    return () => { ipcRenderer.off(IpcChannels.floatingLyricsState, handler) }
+  },
+  onFloatingLyricsClosed: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(IpcChannels.floatingLyricsClosed, handler)
+    return () => { ipcRenderer.off(IpcChannels.floatingLyricsClosed, handler) }
+  },
 })

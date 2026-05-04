@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useRadioStore } from '@/stores/useRadioStore'
 import { useThemeStore } from '@/stores/useThemeStore'
+import { useAppVisibilityStore } from '@/stores/useAppVisibilityStore'
 import { getDominantColor } from '@/utils/color'
 
 /**
@@ -11,6 +12,7 @@ import { getDominantColor } from '@/utils/color'
 export function PlayerAudioBridge() {
   const howlRef = useRef<Howl | null>(null)
   const rafRef = useRef<number>(0)
+  const lastTickRef = useRef<number>(0)
 
   const currentTrack = usePlayerStore((s) => (s.currentIndex >= 0 && s.currentIndex < s.queue.length ? s.queue[s.currentIndex] : null))
   const isPlaying = usePlayerStore((s) => s.isPlaying)
@@ -24,6 +26,38 @@ export function PlayerAudioBridge() {
   const clearPendingSeek = usePlayerStore((s) => s.clearPendingSeek)
   const setDurationFromMeta = usePlayerStore((s) => s.setDurationFromMeta)
 
+  // Stable refs for callbacks to avoid re-creating Howl instances when function references change
+  const playNextRef = useRef(playNext)
+  playNextRef.current = playNext
+  const syncProgressRef = useRef(syncProgress)
+  syncProgressRef.current = syncProgress
+  const setLoadingRef = useRef(setLoading)
+  setLoadingRef.current = setLoading
+  const setErrorRef = useRef(setError)
+  setErrorRef.current = setError
+  const setDurationFromMetaRef = useRef(setDurationFromMeta)
+  setDurationFromMetaRef.current = setDurationFromMeta
+
+  // Prefetch the next track's playback URL to eliminate gap between tracks
+  const prefetchedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const state = usePlayerStore.getState()
+    const nextIdx = state.currentIndex + 1
+    if (nextIdx >= 0 && nextIdx < state.queue.length) {
+      const nextTrack = state.queue[nextIdx]
+      if (nextTrack && !prefetchedRef.current.has(nextTrack.youtubeId)) {
+        prefetchedRef.current.add(nextTrack.youtubeId)
+        // Fire-and-forget: resolves the vibestream:// URL which triggers yt-dlp resolution + caching
+        window.vibestream?.getPlaybackUrl(nextTrack.youtubeId).catch(() => {})
+      }
+    }
+    // Limit set size to avoid memory leak
+    if (prefetchedRef.current.size > 20) {
+      const entries = [...prefetchedRef.current]
+      prefetchedRef.current = new Set(entries.slice(-10))
+    }
+  }, [currentTrack?.youtubeId])
+
   useEffect(() => {
     const stopTick = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
@@ -33,7 +67,14 @@ export function PlayerAudioBridge() {
     const tick = () => {
       const h = howlRef.current
       if (h?.playing()) {
-        syncProgress(h.seek() as number, h.duration() as number)
+        const now = performance.now()
+        // When minimized, throttle to ~0.5 updates/sec (just enough for Discord RPC / media session)
+        // When visible, update at ~30fps for smooth progress bars
+        const interval = useAppVisibilityStore.getState().visible ? 33 : 2000
+        if (now - lastTickRef.current >= interval) {
+          lastTickRef.current = now
+          syncProgressRef.current(h.seek() as number, h.duration() as number)
+        }
       }
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -49,8 +90,8 @@ export function PlayerAudioBridge() {
     const youtubeId = currentTrack.youtubeId
 
     ;(async () => {
-      setLoading(true)
-      setError(null)
+      setLoadingRef.current(true)
+      setErrorRef.current(null)
       try {
         const vs = window.vibestream
         if (!vs) return
@@ -66,18 +107,18 @@ export function PlayerAudioBridge() {
           onload: () => {
             if (cancelled) return
             const d = howl.duration() || 0
-            if (d > 0) setDurationFromMeta(d)
+            if (d > 0) setDurationFromMetaRef.current(d)
           },
           onloaderror: (_id, err) => {
             if (cancelled) return
             console.error('[howl] load', err)
-            setError('Could not load audio stream.')
-            setLoading(false)
+            setErrorRef.current('Could not load audio stream.')
+            setLoadingRef.current(false)
           },
           onplayerror: (_id, err) => {
             console.error('[howl] play', err)
-            setError('Playback failed.')
-            setLoading(false)
+            setErrorRef.current('Playback failed.')
+            setLoadingRef.current(false)
           },
           onend: () => {
             if (cancelled) return
@@ -87,11 +128,11 @@ export function PlayerAudioBridge() {
               howl.play()
               return
             }
-            playNext()
+            playNextRef.current()
           },
         })
         howlRef.current = howl
-        setLoading(false)
+        setLoadingRef.current(false)
 
         if (usePlayerStore.getState().isPlaying) {
           howl.play()
@@ -102,10 +143,10 @@ export function PlayerAudioBridge() {
         if (!cancelled) {
           const errorMessage = e instanceof Error ? e.message : 'Playback error'
           console.error('[PlayerAudioBridge] Failed to get playback URL:', errorMessage)
-          setError(errorMessage.includes('Unable to resolve audio stream') 
+          setErrorRef.current(errorMessage.includes('Unable to resolve audio stream') 
             ? 'Could not load audio stream. This may be due to age restrictions, regional blocks, or YouTube API changes.'
             : errorMessage)
-          setLoading(false)
+          setLoadingRef.current(false)
         }
       }
     })()
@@ -116,7 +157,9 @@ export function PlayerAudioBridge() {
       howlRef.current?.unload()
       howlRef.current = null
     }
-  }, [currentTrack?.youtubeId, playNext, setDurationFromMeta, setError, setLoading, syncProgress])
+  // Only re-create the Howl when the actual track changes — callback refs keep this stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.youtubeId])
 
   useEffect(() => {
     const h = howlRef.current
@@ -198,11 +241,20 @@ export function PlayerAudioBridge() {
     }
   }, [currentTrack, isPlaying])
 
+  const isRadioEnabled = useRadioStore((s) => s.isRadioEnabled)
+
   useEffect(() => {
-    if (currentTrack?.youtubeId) {
-      useRadioStore.getState().fetchRecommendations(currentTrack.youtubeId).catch(console.error)
+    if (currentTrack?.youtubeId && isRadioEnabled) {
+      const radioState = useRadioStore.getState()
+      if (radioState.suggestions.length === 0) {
+        // Initial fetch: gets ~20 tracks
+        radioState.fetchRecommendations(currentTrack.youtubeId, false).catch(console.error)
+      } else {
+        // Incrementally append 1 unique track per song played
+        radioState.fetchRecommendations(currentTrack.youtubeId, true, true).catch(console.error)
+      }
     }
-  }, [currentTrack?.youtubeId])
+  }, [currentTrack?.youtubeId, isRadioEnabled])
 
   // Ambient UI: extract dominant color from album art
   useEffect(() => {

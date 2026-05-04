@@ -76,6 +76,9 @@ export async function fetchGeniusLyrics(title: string, artist: string): Promise<
 
     if (!searchRes.ok) {
       console.error('[genius] search error', searchRes.status)
+      if (searchRes.status === 401 || searchRes.status === 403) {
+        _accessToken = null
+      }
       return null
     }
 
@@ -128,11 +131,40 @@ async function scrapeLyricsFromPage(url: string): Promise<string | null> {
 
     // Genius wraps lyrics in <div data-lyrics-container="true"> elements
     const containers: string[] = []
-    const regex = /data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g
-    let match: RegExpExecArray | null
-
-    while ((match = regex.exec(html)) !== null) {
-      containers.push(match[1])
+    let searchIdx = 0
+    const marker = 'data-lyrics-container="true"'
+    
+    while (true) {
+      const startIdx = html.indexOf(marker, searchIdx)
+      if (startIdx === -1) break
+      
+      const openTagEnd = html.indexOf('>', startIdx)
+      if (openTagEnd === -1) break
+      
+      let currentIdx = openTagEnd + 1
+      let depth = 1
+      
+      while (depth > 0 && currentIdx < html.length) {
+        const nextOpen = html.indexOf('<div', currentIdx)
+        const nextClose = html.indexOf('</div', currentIdx)
+        
+        if (nextClose === -1) break
+        
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          depth++
+          currentIdx = nextOpen + 4
+        } else {
+          depth--
+          if (depth === 0) {
+            containers.push(html.substring(openTagEnd + 1, nextClose))
+            searchIdx = nextClose + 6
+          } else {
+            currentIdx = nextClose + 5
+          }
+        }
+      }
+      
+      if (depth > 0) break // Malformed HTML fallback
     }
 
     if (containers.length === 0) {

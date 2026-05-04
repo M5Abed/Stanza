@@ -3,14 +3,19 @@ import { Play, Plus } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
 
 export function ArtistView({ artistId }: { artistId: string }) {
   const [artist, setArtist] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  const { playTrackNow, addToQueue, loadPlaylist } = usePlayerStore()
+  const playTrackNow = usePlayerStore(s => s.playTrackNow)
+  const addToQueue = usePlayerStore(s => s.addToQueue)
+  const loadPlaylist = usePlayerStore(s => s.loadPlaylist)
+  const repeat = usePlayerStore(s => s.repeat)
   const setActiveView = useUIStore((s) => s.setActiveView)
+  const openMenu = useContextMenuStore(s => s.openMenu)
 
   useEffect(() => {
     async function load() {
@@ -89,7 +94,8 @@ export function ArtistView({ artistId }: { artistId: string }) {
           {artist.topSongs.map((track: any, i: number) => (
              <div 
                key={track.youtubeId + '-' + i}
-               className='group flex items-center gap-4 rounded-xl p-2 transition-all hover:bg-white/5'
+               className='group flex items-center gap-4 rounded-xl p-2 transition-all hover:bg-white/5 cursor-pointer'
+               onContextMenu={(e) => openMenu(e, track)}
              >
                <span className='w-6 text-right text-sm text-theme-subtext/50 font-mono'>{i + 1}</span>
                <div className='relative h-12 w-12 overflow-hidden rounded-md bg-stone-800 shadow-sm'>
@@ -97,7 +103,13 @@ export function ArtistView({ artistId }: { artistId: string }) {
                    <img src={getHighResUrl(track.thumbnailUrl)} className='h-full w-full object-cover' alt={track.title} onError={handleImgError} />
                  )}
                  <button
-                   onClick={() => playTrackNow(track)}
+                   onClick={() => {
+                     if (repeat === 'all' && artist.topSongs.length > 1) {
+                       loadPlaylist(artist.topSongs, i)
+                     } else {
+                       playTrackNow(track)
+                     }
+                   }}
                    className='absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100'
                  >
                    <Play className='h-5 w-5 text-white' fill='currentColor' />

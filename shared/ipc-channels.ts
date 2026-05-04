@@ -2,6 +2,7 @@
 export const IpcChannels = {
   searchMusic: 'vs:search:music',
   searchArtists: 'vs:search:artists',
+  searchPlaylists: 'vs:search:playlists',
   getPlaybackUrl: 'vs:audio:playback-url',
   songUpsert: 'vs:db:song:upsert',
   manualLyricsSave: 'vs:db:manual-lyrics:save',
@@ -31,11 +32,20 @@ export const IpcChannels = {
   isDownloaded: 'vs:download:check',
   playlistSetOffline: 'vs:playlist:set-offline',
   downloadProgress: 'vs:download:progress',
-  /** Mini-player toggle */
-  setMiniPlayer: 'vs:window:mini-player',
+
+
   /** Lyrics editor */
   openLyricsEditor: 'vs:lyrics:open-editor',
   /** Lyrics sharing / file I/O */
   lyricsExport: 'vs:lyrics:export',
   lyricsImport: 'vs:lyrics:import',
+  /** App visibility (minimize/restore) */
+  appVisibilityChange: 'vs:app:visibility-change',
+  /** Floating lyrics window */
+  floatingLyricsOpen: 'vs:floating-lyrics:open',
+  floatingLyricsClose: 'vs:floating-lyrics:close',
+  floatingLyricsTogglePin: 'vs:floating-lyrics:toggle-pin',
+  floatingLyricsState: 'vs:floating-lyrics:state',
+  floatingLyricsClosed: 'vs:floating-lyrics:closed',
+  updateRpc: 'vs:rpc:update',
 } as const

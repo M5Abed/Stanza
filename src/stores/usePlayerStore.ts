@@ -15,6 +15,7 @@ export interface QueueTrack {
 
 export interface PlayerState {
   queue: QueueTrack[]
+  history: QueueTrack[]
   currentIndex: number
   volume: number
   isPlaying: boolean
@@ -25,11 +26,15 @@ export interface PlayerState {
   isLoading: boolean
   error: string | null
   pendingSeekSec: number | null
+  /** Saved queue order before shuffle, so we can restore it */
+  _preShuffleQueue: QueueTrack[] | null
+  _preShuffleIndex: number
 
-  playTrackNow: (track: QueueTrack) => void
-  playQueueIndex: (index: number) => void
-  loadPlaylist: (tracks: QueueTrack[], startIndex?: number) => void
+  playTrackNow: (track: QueueTrack, isAuto?: boolean) => void
+  playQueueIndex: (index: number, isAuto?: boolean) => void
+  loadPlaylist: (tracks: QueueTrack[], startIndex?: number, isAuto?: boolean) => void
   addToQueue: (track: QueueTrack) => void
+  playNext: (track: QueueTrack) => void
   removeFromQueue: (index: number) => void
   reorderQueue: (startIndex: number, endIndex: number) => void
   clearQueue: () => void
@@ -57,10 +62,26 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
+function addToHistory(history: QueueTrack[], track: QueueTrack): QueueTrack[] {
+  const filtered = history.filter(t => t.youtubeId !== track.youtubeId)
+  filtered.unshift(track)
+  return filtered.slice(0, 50)
+}
+
+/** Fisher-Yates shuffle (in-place) */
+function fisherYates<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set, get) => ({
   queue: [],
+  history: [],
   currentIndex: -1,
   volume: 0.85,
   isPlaying: false,
@@ -71,8 +92,13 @@ export const usePlayerStore = create<PlayerState>()(
   isLoading: false,
   error: null,
   pendingSeekSec: null,
+  _preShuffleQueue: null,
+  _preShuffleIndex: -1,
 
-  playTrackNow: (track) => {
+  playTrackNow: (track, isAuto = false) => {
+    if (!isAuto) {
+      useRadioStore.getState().clearSuggestions()
+    }
     const { queue, currentIndex } = get()
     let newQueue: QueueTrack[]
     let newIdx: number
@@ -88,7 +114,7 @@ export const usePlayerStore = create<PlayerState>()(
       newIdx = insertAt
     }
 
-    set({
+    set((s) => ({
       queue: newQueue,
       currentIndex: newIdx,
       isPlaying: true,
@@ -96,7 +122,8 @@ export const usePlayerStore = create<PlayerState>()(
       durationSec: track.durationSeconds ?? 0,
       error: null,
       pendingSeekSec: null,
-    })
+      history: addToHistory(s.history, track),
+    }))
     window.vibestream?.songUpsert({
       youtubeId: track.youtubeId,
       title: track.title,
@@ -118,18 +145,22 @@ export const usePlayerStore = create<PlayerState>()(
     })
   },
 
-  playQueueIndex: (index) => {
+  playQueueIndex: (index, isAuto = false) => {
+    if (!isAuto) {
+      useRadioStore.getState().clearSuggestions()
+    }
     const { queue } = get()
     if (index < 0 || index >= queue.length) return
     const t = queue[index]
-    set({
+    set((s) => ({
       currentIndex: index,
       isPlaying: true,
       positionSec: 0,
       durationSec: t.durationSeconds ?? 0,
       error: null,
       pendingSeekSec: null,
-    })
+      history: addToHistory(s.history, t),
+    }))
     window.vibestream?.songUpsert({
       youtubeId: t.youtubeId,
       title: t.title,
@@ -151,16 +182,37 @@ export const usePlayerStore = create<PlayerState>()(
     })
   },
 
-  loadPlaylist: (tracks, startIndex = 0) => {
-    set({
-      queue: tracks,
-      currentIndex: startIndex,
+  loadPlaylist: (tracks, startIndex = 0, isAuto = false) => {
+    if (!isAuto) {
+      useRadioStore.getState().clearSuggestions()
+    }
+    const { shuffle } = get()
+    let finalQueue = tracks
+    let finalIndex = startIndex
+
+    if (shuffle && tracks.length > 1) {
+      // Shuffle is active: keep the selected track at index 0, shuffle the rest
+      const startTrack = tracks[startIndex]
+      const rest = tracks.filter((_, i) => i !== startIndex)
+      finalQueue = [startTrack, ...fisherYates([...rest])].filter(Boolean)
+      finalIndex = 0
+    }
+
+    set((s) => ({
+      queue: finalQueue,
+      currentIndex: finalIndex,
       isPlaying: true,
       positionSec: 0,
       durationSec: tracks[startIndex]?.durationSeconds ?? 0,
       error: null,
       pendingSeekSec: null,
-    })
+      history: tracks[startIndex] ? addToHistory(s.history, tracks[startIndex]) : s.history,
+      // Update pre-shuffle state so unshuffle restores original order
+      ...(shuffle && tracks.length > 1 ? {
+        _preShuffleQueue: [...tracks],
+        _preShuffleIndex: startIndex,
+      } : {}),
+    }))
     
     // Automatically register the selected song object natively
     if (tracks[startIndex]) {
@@ -188,7 +240,25 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   addToQueue: (track) => {
-    set((s) => ({ queue: [...s.queue, track] }))
+    set((s) => {
+      const q = [...s.queue, track]
+      if (s.queue.length === 0) {
+        return { queue: q, currentIndex: 0, isPlaying: true, positionSec: 0, durationSec: track.durationSeconds ?? 0 }
+      }
+      return { queue: q }
+    })
+  },
+
+  playNext: (track) => {
+    set((s) => {
+      const q = [...s.queue]
+      const nextIdx = s.currentIndex >= 0 ? s.currentIndex + 1 : q.length
+      q.splice(nextIdx, 0, track)
+      if (s.queue.length === 0) {
+        return { queue: q, currentIndex: 0, isPlaying: true, positionSec: 0, durationSec: track.durationSeconds ?? 0 }
+      }
+      return { queue: q }
+    })
   },
 
   removeFromQueue: (index) => {
@@ -223,14 +293,21 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   clearQueue: () => {
-    set({
-      queue: [],
-      currentIndex: -1,
-      isPlaying: false,
-      positionSec: 0,
-      durationSec: 0,
-      error: null,
-    })
+    const { queue, currentIndex } = get()
+    const current = queue[currentIndex]
+    if (current) {
+      // Keep only the currently playing track
+      set({ queue: [current], currentIndex: 0 })
+    } else {
+      set({
+        queue: [],
+        currentIndex: -1,
+        isPlaying: false,
+        positionSec: 0,
+        durationSec: 0,
+        error: null,
+      })
+    }
   },
 
   play: () => set({ isPlaying: true }),
@@ -238,19 +315,19 @@ export const usePlayerStore = create<PlayerState>()(
   toggle: () => set((s) => ({ isPlaying: !s.isPlaying })),
 
   next: () => {
-    const { queue, currentIndex, shuffle, repeat } = get()
+    const { queue, currentIndex, repeat } = get()
     if (queue.length === 0) return
-    let nextIdx: number
-    if (shuffle && queue.length > 1) {
-      do {
-        nextIdx = Math.floor(Math.random() * queue.length)
-      } while (nextIdx === currentIndex)
-    } else {
-      nextIdx = currentIndex + 1
-    }
+    const nextIdx = currentIndex + 1
     if (nextIdx >= queue.length) {
       if (repeat === 'all') {
-        get().playQueueIndex(0)
+        if (get().shuffle && queue.length > 1) {
+          // Re-shuffle the queue for a fresh random order on each loop
+          const currentTrack = queue[currentIndex]
+          const rest = queue.filter((_, i) => i !== currentIndex)
+          const reshuffled = [currentTrack, ...fisherYates([...rest])].filter(Boolean)
+          set({ queue: reshuffled, currentIndex: 0 })
+        }
+        get().playQueueIndex(0, true)
         return
       }
       
@@ -258,45 +335,70 @@ export const usePlayerStore = create<PlayerState>()(
       const radioState = useRadioStore.getState()
       if (radioState.suggestions.length > 0) {
         const nextRadioTrack = radioState.suggestions[0]
-        get().playTrackNow(nextRadioTrack)
-        // Chain: fetch new genre-similar recommendations for the radio track
-        useRadioStore.getState().fetchRecommendations(nextRadioTrack.youtubeId)
+        radioState.removeSuggestion(0)
+        get().playTrackNow(nextRadioTrack, true)
         return
       }
 
       set({ isPlaying: false, positionSec: 0 })
       return
     }
-    get().playQueueIndex(nextIdx)
+    get().playQueueIndex(nextIdx, true)
   },
 
   previous: () => {
-    const { queue, currentIndex, shuffle, repeat } = get()
+    const { queue, currentIndex, repeat } = get()
     if (queue.length === 0) return
-    let prevIdx: number
-    if (shuffle && queue.length > 1) {
-      do {
-        prevIdx = Math.floor(Math.random() * queue.length)
-      } while (prevIdx === currentIndex)
-    } else {
-      prevIdx = currentIndex - 1
-    }
+    const prevIdx = currentIndex - 1
     if (prevIdx < 0) {
       if (repeat === 'all') {
-        get().playQueueIndex(queue.length - 1)
+        get().playQueueIndex(queue.length - 1, true)
         return
       }
       set({ isPlaying: false })
       return
     }
-    get().playQueueIndex(prevIdx)
+    get().playQueueIndex(prevIdx, true)
   },
 
   setVolume: (v) => set({ volume: clamp(v, 0, 1) }),
   requestSeek: (sec) => set({ pendingSeekSec: sec }),
   clearPendingSeek: () => set({ pendingSeekSec: null }),
 
-  setShuffle: (v) => set({ shuffle: v }),
+  setShuffle: (v) => {
+    const { queue, currentIndex } = get()
+    if (v) {
+      // Turning shuffle ON: save original order, then shuffle the queue
+      // keeping the current track at index 0
+      const currentTrack = queue[currentIndex]
+      const rest = queue.filter((_, i) => i !== currentIndex)
+      const shuffled = [currentTrack, ...fisherYates([...rest])].filter(Boolean)
+      set({
+        shuffle: true,
+        _preShuffleQueue: [...queue],
+        _preShuffleIndex: currentIndex,
+        queue: shuffled,
+        currentIndex: 0,
+      })
+    } else {
+      // Turning shuffle OFF: restore original order
+      const { _preShuffleQueue, _preShuffleIndex } = get()
+      const currentTrack = queue[currentIndex]
+      if (_preShuffleQueue && _preShuffleQueue.length > 0) {
+        // Find where the current track was in the original order
+        const origIdx = _preShuffleQueue.findIndex(t => t.youtubeId === currentTrack?.youtubeId)
+        set({
+          shuffle: false,
+          queue: _preShuffleQueue,
+          currentIndex: origIdx >= 0 ? origIdx : _preShuffleIndex,
+          _preShuffleQueue: null,
+          _preShuffleIndex: -1,
+        })
+      } else {
+        set({ shuffle: false, _preShuffleQueue: null, _preShuffleIndex: -1 })
+      }
+    }
+  },
   cycleRepeat: () =>
     set((s) => {
       const nextRepeat = s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off'
@@ -308,17 +410,24 @@ export const usePlayerStore = create<PlayerState>()(
 
   setLoading: (v) => set({ isLoading: v }),
   setError: (msg) => set({ error: msg }),
-  syncProgress: (pos, dur) => set({ positionSec: pos, durationSec: dur > 0 ? dur : get().durationSec }),
+  syncProgress: (pos, dur) => {
+    const s = get()
+    // Throttle: only commit a state update when position drifts ≥ 0.03s
+    // This allows ~30 Hz updates for precise lyric stamping and smooth progress bars
+    if (Math.abs(pos - s.positionSec) < 0.03 && (dur <= 0 || s.durationSec > 0)) return
+    set({ positionSec: pos, durationSec: dur > 0 ? dur : s.durationSec })
+  },
   setDurationFromMeta: (sec) => set({ durationSec: sec }),
     }),
     {
       name: 'vibestream-player-storage',
       partialize: (state) => ({
         queue: state.queue,
+        history: state.history,
         currentIndex: state.currentIndex,
         volume: state.volume,
-        repeat: state.repeat,
         shuffle: state.shuffle,
+        repeat: state.repeat,
       }),
     }
   )

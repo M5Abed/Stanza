@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState, FormEvent } from 'react'
 import { motion } from 'framer-motion'
-import { Loader2, Music2, Plus, Search, UserRound, Play, Clock, X } from 'lucide-react'
+import { Loader2, Music2, Plus, Search, UserRound, Play, Clock, X, ListMusic } from 'lucide-react'
 import { usePlayerStore, type QueueTrack } from '@/stores/usePlayerStore'
 import { useSearchStore } from '@/stores/useSearchStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useRadioStore } from '@/stores/useRadioStore'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
+import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
 /* ---------- Spotify result types ---------- */
 interface SpTrack {
@@ -38,6 +41,16 @@ interface YtSong {
   isExplicit: boolean
 }
 
+interface YtPlaylist {
+  playlistId: string
+  title: string
+  author: string
+  thumbnailUrl: string | null
+  trackCount: number | null
+}
+
+type SearchFilter = 'all' | 'songs' | 'artists' | 'playlists'
+
 /**
  * Convert a Spotify track to a QueueTrack.
  * We need a youtubeId for playback — we'll resolve that on-the-fly.
@@ -67,13 +80,18 @@ export function SearchView() {
   const [debounced, setDebounced] = useState(lastQuery)
   const [tracks, setTracks] = useState<SpTrack[]>(lastTracks as SpTrack[])
   const [artists, setArtists] = useState<SpArtist[]>(lastArtists as SpArtist[])
+  const [playlists, setPlaylists] = useState<YtPlaylist[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [filter, setFilter] = useState<SearchFilter>('all')
   const [resolvingId, setResolvingId] = useState<string | null>(null)
 
   const setActiveView = useUIStore((s) => s.setActiveView)
   const playTrackNow = usePlayerStore((s) => s.playTrackNow)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
+  const loadPlaylist = usePlayerStore((s) => s.loadPlaylist)
+  const repeat = usePlayerStore((s) => s.repeat)
+  const openMenu = useContextMenuStore(s => s.openMenu)
 
   const handleHistorySearch = (term: string) => {
     setQ(term)
@@ -88,11 +106,37 @@ export function SearchView() {
   const resolveAndPlay = useCallback(async (sp: SpTrack, mode: 'play' | 'queue') => {
     if (!window.vibestream) return
 
+    // Helper to play and load suggestions if repeat is 'all'
+    const handlePlay = (qt: QueueTrack) => {
+      if (mode === 'queue') {
+        addToQueue(qt)
+        return
+      }
+      playTrackNow(qt)
+      
+      // If repeat all is on, queue suggestions based on this track instead of rest of search results
+      if (repeat === 'all') {
+        const radioState = useRadioStore.getState()
+        radioState.fetchRecommendations(qt.youtubeId).then(() => {
+          const suggestions = useRadioStore.getState().suggestions
+          if (suggestions.length > 0) {
+            // Append suggestions to the current queue
+            usePlayerStore.setState(s => {
+              // Ensure the current track is still the one we just played
+              if (s.queue[0]?.youtubeId === qt.youtubeId) {
+                return { queue: [s.queue[0], ...suggestions] }
+              }
+              return s
+            })
+          }
+        }).catch(console.error)
+      }
+    }
+
     // If we already have a YouTube ID (from fallback search), use it directly
     if (sp._youtubeId) {
       const qt = spTrackToQueue(sp, sp._youtubeId)
-      if (mode === 'play') playTrackNow(qt)
-      else addToQueue(qt)
+      handlePlay(qt)
       return
     }
 
@@ -103,15 +147,13 @@ export function SearchView() {
 
       if (ytResults.length > 0) {
         const qt = spTrackToQueue(sp, ytResults[0].youtubeId)
-        if (mode === 'play') playTrackNow(qt)
-        else addToQueue(qt)
+        handlePlay(qt)
       } else {
         // Second attempt with just the track name
         const fallback: YtSong[] = await window.vibestream.searchMusic(sp.name)
         if (fallback.length > 0) {
           const qt = spTrackToQueue(sp, fallback[0].youtubeId)
-          if (mode === 'play') playTrackNow(qt)
-          else addToQueue(qt)
+          handlePlay(qt)
         } else {
           usePlayerStore.getState().setError('Could not find playable audio for this track.')
         }
@@ -122,13 +164,14 @@ export function SearchView() {
     } finally {
       setResolvingId(null)
     }
-  }, [playTrackNow, addToQueue])
+  }, [playTrackNow, addToQueue, loadPlaylist, repeat])
 
   /* ---------- Main search using Spotify API ---------- */
   const runSearch = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
       setTracks([])
       setArtists([])
+      setPlaylists([])
       setErr(null)
       return
     }
@@ -171,7 +214,15 @@ export function SearchView() {
           }))
 
           setTracks(augmentedTracks)
-          setArtists(augmentedArtists)
+          // Deduplicate artists by name
+          const spSeen = new Set<string>()
+          const uniqueSpArtists = augmentedArtists.filter((a) => {
+            const key = a.name.toLowerCase().trim()
+            if (spSeen.has(key)) return false
+            spSeen.add(key)
+            return true
+          })
+          setArtists(uniqueSpArtists)
           addSearchTerm(query)
         }
       } catch (spErr) {
@@ -180,9 +231,10 @@ export function SearchView() {
 
       // Fallback to YouTube search if Spotify didn't work
       if (!spotifyWorked) {
-        const [musicRes, artistRes] = await Promise.allSettled([
+        const [musicRes, artistRes, playlistRes] = await Promise.allSettled([
           window.vibestream.searchMusic(query),
           window.vibestream.searchArtists(query),
+          window.vibestream.searchPlaylists(query),
         ])
 
         const musics: YtSong[] = musicRes.status === 'fulfilled' ? musicRes.value : []
@@ -201,22 +253,35 @@ export function SearchView() {
           _youtubeId: m.youtubeId, // keep for direct playback
         }))
 
+        const pls: YtPlaylist[] = playlistRes.status === 'fulfilled' ? playlistRes.value : []
+
         setTracks(converted)
-        setArtists(arts.map((a) => ({
+        const mappedArts = arts.map((a) => ({
           spotifyId: a.artistId,
           name: a.name,
           imageUrl: a.thumbnailUrl,
           followers: null,
           genres: [],
-        })))
+        }))
+        // Deduplicate artists by name (YTM returns multiple profiles for the same artist)
+        const seenNames = new Set<string>()
+        const uniqueArts = mappedArts.filter((a) => {
+          const key = a.name.toLowerCase().trim()
+          if (seenNames.has(key)) return false
+          seenNames.add(key)
+          return true
+        })
+        setArtists(uniqueArts)
+        setPlaylists(pls)
 
-        if (converted.length === 0 && arts.length === 0) {
+        if (converted.length === 0 && arts.length === 0 && pls.length === 0) {
           setErr('No results for that query.')
         }
       }
     } catch (e) {
       setTracks([])
       setArtists([])
+      setPlaylists([])
       setErr(e instanceof Error ? e.message : 'Search failed')
     } finally {
       setLoading(false)
@@ -249,9 +314,28 @@ export function SearchView() {
         </div>
       </div>
 
+      {/* Filter bubbles */}
+      {(tracks.length > 0 || artists.length > 0 || playlists.length > 0) && (
+        <div className='flex items-center gap-2 mb-4'>
+          {(['all', 'songs', 'artists', 'playlists'] as SearchFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                filter === f
+                  ? 'bg-white text-black'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              {f === 'all' ? 'All' : f === 'songs' ? 'Songs' : f === 'artists' ? 'Artists' : 'Playlists'}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className='flex flex-col gap-8'>
         {/* Search History */}
-        {!loading && tracks.length === 0 && artists.length === 0 && q.trim() === '' && history.length > 0 && (
+        {!loading && tracks.length === 0 && artists.length === 0 && playlists.length === 0 && q.trim() === '' && history.length > 0 && (
           <div className='flex flex-col gap-4 animate-in fade-in duration-300'>
             <div className='flex items-center justify-between'>
               <h2 className='text-xl font-bold text-white'>Recent Searches</h2>
@@ -297,7 +381,7 @@ export function SearchView() {
           </div>
         )}
 
-        {!loading && debounced && debounced.length >= 2 && tracks.length === 0 && !err && (
+        {!loading && debounced && debounced.length >= 2 && tracks.length === 0 && artists.length === 0 && playlists.length === 0 && !err && (
           <div className='flex flex-col items-center py-20 text-center gap-4'>
             <Search className='h-16 w-16 text-[#a7a7a7]' />
             <p className='text-lg font-semibold text-white'>No results found</p>
@@ -305,7 +389,7 @@ export function SearchView() {
           </div>
         )}
 
-        {tracks.length > 0 && (
+        {tracks.length > 0 && (filter === 'all' || filter === 'songs') && (
           <section>
             <h2 className='mb-4 text-2xl font-bold tracking-tight text-white'>Songs</h2>
             <div className='flex flex-col'>
@@ -318,6 +402,14 @@ export function SearchView() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.015 }}
                     onClick={() => resolveAndPlay(t, 'play')}
+                    onContextMenu={(e) => {
+                      if (t._youtubeId) {
+                        openMenu(e, spTrackToQueue(t, t._youtubeId))
+                      } else {
+                        // Can't show context menu reliably if we don't have youtubeId yet
+                        // But we could attempt to resolve it. For now, disable if unresolved.
+                      }
+                    }}
                     className='group relative flex items-center justify-between rounded-md px-4 py-2 hover:bg-[#ffffff1a] transition-colors gap-4 cursor-pointer'
                   >
                     <div className='flex items-center gap-4 flex-1 min-w-0'>
@@ -349,15 +441,10 @@ export function SearchView() {
                         >{t.name}</span>
                         <span className='truncate text-[14px] text-[#a7a7a7] transition-colors'>
                           {t.explicit && <span className='mr-1 inline-flex items-center rounded bg-[#a7a7a7] px-1 text-[9px] font-bold text-black leading-tight'>E</span>}
-                          <span
-                            className='hover:underline hover:text-white cursor-pointer'
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const artistName = t.artists.split(',')[0].trim()
-                              setActiveView(`artist-${artistName}` as any)
-                            }}
-                            title={`Go to artist: ${t.artists}`}
-                          >{t.artists}</span>
+                          <ArtistLinks
+                            artist={t.artists}
+                            linkClassName='text-[#a7a7a7]'
+                          />
                           {t.album ? (
                             <>
                               {' · '}
@@ -398,7 +485,7 @@ export function SearchView() {
           </section>
         )}
 
-        {artists.length > 0 && (
+        {artists.length > 0 && (filter === 'all' || filter === 'artists') && (
           <section>
             <h2 className='mb-4 text-2xl font-bold tracking-tight text-white'>Artists</h2>
             <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6'>
@@ -426,6 +513,40 @@ export function SearchView() {
                   <div className='flex w-full flex-col min-w-0 text-center gap-1'>
                     <span className='truncate font-bold text-white'>{a.name}</span>
                     <span className='truncate text-[14px] text-[#a7a7a7]'>Artist</span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {playlists.length > 0 && (filter === 'all' || filter === 'playlists') && (
+          <section>
+            <h2 className='mb-4 text-2xl font-bold tracking-tight text-white'>Playlists</h2>
+            <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6'>
+              {playlists.map((pl, idx) => (
+                <motion.div
+                  key={pl.playlistId + idx}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 + idx * 0.02 }}
+                  onClick={() => setActiveView(`album-${pl.playlistId}` as any)}
+                  className='group relative flex flex-col items-center gap-3 rounded-2xl bg-theme-surface/40 backdrop-blur-md p-4 transition-all hover:bg-white/10 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 overflow-hidden cursor-pointer'
+                >
+                  <div className='h-[120px] w-[120px] shrink-0 overflow-hidden rounded-xl bg-[#282828] shadow-lg'>
+                    {pl.thumbnailUrl ? (
+                      <img src={getHighResUrl(pl.thumbnailUrl)} alt='' className='h-full w-full object-cover' onError={handleImgError} />
+                    ) : (
+                      <div className='flex h-full w-full items-center justify-center text-[#a7a7a7]'>
+                        <ListMusic className='h-10 w-10' />
+                      </div>
+                    )}
+                  </div>
+                  <div className='flex w-full flex-col min-w-0 text-center gap-1'>
+                    <span className='truncate font-bold text-white'>{pl.title}</span>
+                    <span className='truncate text-[13px] text-[#a7a7a7]'>
+                      {pl.author}{pl.trackCount != null ? ` · ${pl.trackCount} tracks` : ''}
+                    </span>
                   </div>
                 </motion.div>
               ))}

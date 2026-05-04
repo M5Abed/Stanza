@@ -1,0 +1,70 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.mohamedabed.stanza",
+  "productName": "Stanza",
+  "buildVersion": "2.1",
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/.prisma/**/*",
+    "node_modules/@prisma/client/**/*"
+  ],
+  "forceCodeSigning": false,
+  "directories": {
+    "output": "release/v2.1"
+  },
+  "files": [
+    "dist-electron",
+    "dist",
+    ".env",
+    "package.json",
+    "!node_modules/.prisma",
+    "!node_modules/@prisma/client"
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/.prisma",
+      "to": "node_modules/.prisma"
+    },
+    {
+      "from": "node_modules/@prisma/client",
+      "to": "node_modules/@prisma/client"
+    },
+    {
+      "from": "resources/yt-dlp.exe",
+      "to": "yt-dlp.exe"
+    },
+    {
+      "from": "resources/yt-dlp_macos",
+      "to": "yt-dlp_macos"
+    }
+  ],
+  "mac": {
+    "artifactName": "${productName}_2.1_mac.${ext}",
+    "target": [
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "build/icon.png"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "build/icon.ico",
+    "artifactName": "${productName}_2.1.${ext}",
+    "sign": null,
+    "signDlls": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "compression": "maximum"
+}

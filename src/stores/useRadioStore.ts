@@ -2,18 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { usePlayerStore, type QueueTrack } from './usePlayerStore'
 
-function injectSuggestionsToQueue(suggestions: QueueTrack[]) {
-  const playerStore = usePlayerStore.getState()
-  const currentTrack = playerStore.queue[playerStore.currentIndex]
-  if (currentTrack) {
-    usePlayerStore.setState({
-      queue: [currentTrack, ...suggestions],
-      currentIndex: 0,
-    })
-  } else {
-    playerStore.loadPlaylist(suggestions, 0)
-  }
-}
+
 
 interface RadioState {
   isRadioEnabled: boolean
@@ -22,7 +11,8 @@ interface RadioState {
   
   toggleRadio: () => void
   setRadioEnabled: (enabled: boolean) => void
-  fetchRecommendations: (youtubeId: string) => Promise<void>
+  fetchRecommendations: (youtubeId: string, append?: boolean, single?: boolean) => Promise<void>
+  removeSuggestion: (index: number) => void
   clearSuggestions: () => void
 }
 
@@ -39,9 +29,6 @@ export const useRadioStore = create<RadioState>()(
         set({ isRadioEnabled: newState })
         if (newState) {
           usePlayerStore.setState({ repeat: 'off' })
-          if (state.suggestions.length > 0) {
-            injectSuggestionsToQueue(state.suggestions)
-          }
         }
       },
       setRadioEnabled: (e) => {
@@ -49,32 +36,41 @@ export const useRadioStore = create<RadioState>()(
         set({ isRadioEnabled: e })
         if (e) {
           usePlayerStore.setState({ repeat: 'off' })
-          if (state.suggestions.length > 0) {
-            injectSuggestionsToQueue(state.suggestions)
-          }
         }
       },
 
-      fetchRecommendations: async (youtubeId: string) => {
+      fetchRecommendations: async (youtubeId: string, append = false, single = false) => {
         set({ isFetching: true })
         try {
           const vs = window.vibestream
           if (!vs) throw new Error('Vibestream Preload missing')
           const recs = (await vs.getRadioRecommendations(youtubeId)) as QueueTrack[]
           if (recs && recs.length > 0) {
-            set({ suggestions: recs, isFetching: false })
-            const state = useRadioStore.getState()
-            if (state.isRadioEnabled) {
-              injectSuggestionsToQueue(recs)
-            }
+            set((state) => {
+              const existingIds = new Set(state.suggestions.map(s => s.youtubeId))
+              let uniqueRecs = recs.filter(r => !existingIds.has(r.youtubeId))
+              
+              if (single && uniqueRecs.length > 0) {
+                uniqueRecs = [uniqueRecs[0]]
+              }
+
+              return {
+                suggestions: append ? [...state.suggestions, ...uniqueRecs] : recs,
+                isFetching: false
+              }
+            })
           } else {
             set({ isFetching: false })
           }
         } catch (e) {
           console.error('[Radio] failed to fetch recommendations', e)
-          set({ isFetching: false, suggestions: [] })
+          set((state) => ({ isFetching: false, suggestions: append ? state.suggestions : [] }))
         }
       },
+      
+      removeSuggestion: (index) => set((s) => ({
+        suggestions: s.suggestions.filter((_, i) => i !== index)
+      })),
       
       clearSuggestions: () => set({ suggestions: [] })
     }),

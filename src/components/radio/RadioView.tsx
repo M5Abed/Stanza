@@ -5,8 +5,16 @@ import { usePlayerStore } from '@/stores/usePlayerStore'
 import { handleImgError } from '@/utils/image'
 
 export function RadioView() {
-  const { suggestions, isFetching, isRadioEnabled, toggleRadio, fetchRecommendations } = useRadioStore()
-  const { queue, currentIndex, playTrackNow, addToQueue } = usePlayerStore()
+  const suggestions = useRadioStore(s => s.suggestions)
+  const isFetching = useRadioStore(s => s.isFetching)
+  const isRadioEnabled = useRadioStore(s => s.isRadioEnabled)
+  const toggleRadio = useRadioStore(s => s.toggleRadio)
+  const fetchRecommendations = useRadioStore(s => s.fetchRecommendations)
+
+  const queue = usePlayerStore(s => s.queue)
+  const currentIndex = usePlayerStore(s => s.currentIndex)
+  const playTrackNow = usePlayerStore(s => s.playTrackNow)
+  const addToQueue = usePlayerStore(s => s.addToQueue)
 
   const currentTrack = queue[currentIndex]
 
