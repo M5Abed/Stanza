@@ -13,20 +13,12 @@ Stanza is a modern, lightweight, and incredibly fast desktop music player powere
 - **Playlists & Persistent Queue:** Fully functional queue management and custom playlists saved natively to your local machine.
 - **Discord Rich Presence:** Show off what you're listening to natively on your Discord profile.
 - **Top Songs & Advanced Discographies:** Deep pagination fetches over 50+ albums/singles gracefully, missing absolutely nothing.
-- **Song Story (AI):** Get behind-the-scenes facts, hidden meanings, and trivia about any song — powered by Google Gemini with Search Grounding.
-- **Offline Downloads:** Download songs and entire playlists for offline listening via yt-dlp.
 - **Modern UI:** Designed with Framer Motion and TailwindCSS for a high-end, dynamic user experience.
 - **Persistent Database:** Uses Prisma to cache player data and save your preferences securely.
 
 ---
 
 ## 📝 Update Logs
-
-### Version 2.2
-- **Library Album Management:** Enabled "Save to Library" functionality for all album types, complete with updated Sidebar UI to clearly distinguish between saved Albums and Playlists.
-- **Audio Performance & Stability:** Eliminated audio playback stuttering by applying OS-level Chromium background flags, optimizing stream-caching pipelines, and proactively prefetching upcoming queue items.
-- **AI Integration:** Replaced the experimental AI DJ with the new "Song Story" feature, powered by Google Gemini, providing behind-the-scenes facts, hidden meanings, and trivia about any song.
-- **Offline Download Fixes:** Resolved a bug where the "Download All" button in the Liked Songs playlist failed to correctly queue all tracks for offline downloading.
 
 ### Version 2.1
 - **Performance & Optimization:** Significantly improved app performance and reduced background power consumption.
@@ -39,6 +31,24 @@ Stanza is a modern, lightweight, and incredibly fast desktop music player powere
 - **Mascot Integration:** Added the Pink Panther as a subtle watermark background to the main app interface.
 
 ---
+
+## 💻 Tech Stack & Dependencies
+Stanza is built using the latest web technologies compiled efficiently for desktop:
+
+### Core Frameworks
+- **[Electron](https://www.electronjs.org/)** - Desktop environment framework.
+- **[React](https://react.dev/) / [Vite](https://vitejs.dev/)** - Lightning-fast UI rendering and bundling.
+- **[TypeScript](https://www.typescriptlang.org/)** - End-to-end type safety.
+
+### UI & Styling
+- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework.
+- **[Framer Motion](https://www.framer.com/motion/)** - Beautiful, smooth micro-animations.
+- **[Lucide React](https://lucide.dev/)** - Pixel-perfect iconography.
+
+### Data & State
+- **[Zustand](https://zustand-demo.pmnd.rs/)** - Fast, un-opinionated state management.
+- **[Prisma](https://www.prisma.io/)** - Next-generation ORM for reliable local caching.
+
 
 ## 🔌 APIs & External Services
 
@@ -237,71 +247,6 @@ User opens lyrics for a track
 
 ---
 
-## 🔑 Environment Variables
-
-Create a `.env` file in the project root (copy from `.env.example`):
-
-```env
-# Required — Prisma database path
-DATABASE_URL="file:./dev.db"
-
-# Spotify — metadata only (Client Credentials flow)
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-
-# Genius — lyrics scraping (Client Credentials flow)
-GENIUS_CLIENT_ID=your_genius_client_id
-GENIUS_CLIENT_SECRET=your_genius_client_secret
-
-# Google Gemini — Song Story AI feature
-GEMINI_API_KEY=your_gemini_api_key
-
-# Last.fm — supplementary radio recommendations (optional)
-LASTFM_API_KEY=your_lastfm_api_key
-```
-
-| Variable | Required | Source |
-|---|---|---|
-| `DATABASE_URL` | ✅ | Local SQLite path for Prisma |
-| `SPOTIFY_CLIENT_ID` | ✅ | [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
-| `SPOTIFY_CLIENT_SECRET` | ✅ | Spotify Developer Dashboard |
-| `GENIUS_CLIENT_ID` | ✅ | [Genius API Clients](https://genius.com/api-clients) |
-| `GENIUS_CLIENT_SECRET` | ✅ | Genius API Clients |
-| `GEMINI_API_KEY` | Optional | [Google AI Studio](https://aistudio.google.com/apikey) |
-| `LASTFM_API_KEY` | Optional | [Last.fm API](https://www.last.fm/api/account/create) |
-
----
-
-## 💻 Tech Stack & Dependencies
-Stanza is built using the latest web technologies compiled efficiently for desktop:
-
-### Core Frameworks
-- **[Electron](https://www.electronjs.org/)** - Desktop environment framework.
-- **[React](https://react.dev/) / [Vite](https://vitejs.dev/)** - Lightning-fast UI rendering and bundling.
-- **[TypeScript](https://www.typescriptlang.org/)** - End-to-end type safety.
-
-### UI & Styling
-- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework.
-- **[Framer Motion](https://www.framer.com/motion/)** - Beautiful, smooth micro-animations.
-- **[Lucide React](https://lucide.dev/)** - Pixel-perfect iconography.
-
-### Data & State
-- **[Zustand](https://zustand-demo.pmnd.rs/)** - Fast, un-opinionated state management.
-- **[Prisma](https://www.prisma.io/)** - Next-generation ORM for reliable local caching.
-- **[Zod](https://zod.dev/)** - Runtime schema validation for all IPC messages.
-
-### Audio & APIs
-- **[Spotify Web API](https://developer.spotify.com/documentation/web-api/)** - Primary source for high-fidelity track metadata and artist imagery.
-- **[Howler.js](https://howlerjs.com/)** - Robust audio library for modern web.
-- **[youtubei.js](https://github.com/LuanRT/YouTube.js)** - Unofficial Innertube API for YouTube Music search, streaming, and metadata.
-- **[@distube/ytdl-core](https://github.com/distubejs/ytdl-core)** - Fallback media extraction.
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Bundled binary for audio URL resolution and offline downloads.
-- **[LRCLIB](https://lrclib.net/)** - Open-source synchronized lyrics API.
-- **[Genius API](https://genius.com/developers)** - Song lyrics via search + page scraping.
-- **[Last.fm API](https://www.last.fm/api)** - Similar track recommendations for radio.
-- **[Google Gemini](https://ai.google.dev/)** - AI-powered Song Story generation with Search Grounding.
-- **[discord-rpc](https://github.com/discordjs/RPC)** - Native Discord integrations.
-- **[electron-updater](https://www.electron.build/auto-update)** - Seamless auto-update system.
 
 ---
 
@@ -337,21 +282,11 @@ If you wish to compile Stanza locally rather than using the `.exe`:
    ```bash
    npm run postinstall
    ```
-4. Copy `.env.example` to `.env` and fill in your API credentials:
-   ```bash
-   cp .env.example .env
-   ```
-5. Run the development server:
+4. Run the development server:
    ```bash
    npm run dev
    ```
-6. *(Optional)* Compile to a strict `.exe` locally:
+5. *(Optional)* Compile to a strict `.exe` locally:
    ```bash
    npm run release
    ```
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
