@@ -31,6 +31,7 @@ import { ArtistView } from '@/components/artist/ArtistView'
 import { ArtistAllSongsView } from '@/components/artist/ArtistAllSongsView'
 import { AlbumView } from '@/components/album/AlbumView'
 import { FloatingLyricsView } from '@/components/player/FloatingLyricsView'
+
 import mascotUrl from '@/assets/mascot.png'
 
 function NavHeader() {
@@ -73,6 +74,7 @@ function MainContent() {
   if (activeView === 'home') return <HomeView />
   if (activeView === 'search') return <SearchView />
   if (activeView === 'radio') return <RadioView />
+
   if (activeView === 'queue') return <QueuePanel />
   if (activeView.startsWith('artist-songs-')) return <ArtistAllSongsView artistId={activeView.replace('artist-songs-', '')} />
   if (activeView.startsWith('artist-')) return <ArtistView artistId={activeView.replace('artist-', '')} />

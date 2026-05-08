@@ -48,4 +48,8 @@ export const IpcChannels = {
   floatingLyricsState: 'vs:floating-lyrics:state',
   floatingLyricsClosed: 'vs:floating-lyrics:closed',
   updateRpc: 'vs:rpc:update',
+  /** Gemini AI */
+
+  geminiSongStory: 'vs:gemini:song-story',
+  getTrackViews: 'vs:track:get-views',
 } as const

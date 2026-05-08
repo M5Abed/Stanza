@@ -29,6 +29,8 @@ export interface PlayerState {
   /** Saved queue order before shuffle, so we can restore it */
   _preShuffleQueue: QueueTrack[] | null
   _preShuffleIndex: number
+  /** Counts songs played — used for DJ transition trigger */
+  songCounter: number
 
   playTrackNow: (track: QueueTrack, isAuto?: boolean) => void
   playQueueIndex: (index: number, isAuto?: boolean) => void
@@ -94,6 +96,8 @@ export const usePlayerStore = create<PlayerState>()(
   pendingSeekSec: null,
   _preShuffleQueue: null,
   _preShuffleIndex: -1,
+  songCounter: 0,
+
 
   playTrackNow: (track, isAuto = false) => {
     if (!isAuto) {
@@ -123,6 +127,7 @@ export const usePlayerStore = create<PlayerState>()(
       error: null,
       pendingSeekSec: null,
       history: addToHistory(s.history, track),
+      songCounter: s.songCounter + 1,
     }))
     window.vibestream?.songUpsert({
       youtubeId: track.youtubeId,
@@ -160,6 +165,7 @@ export const usePlayerStore = create<PlayerState>()(
       error: null,
       pendingSeekSec: null,
       history: addToHistory(s.history, t),
+      songCounter: s.songCounter + 1,
     }))
     window.vibestream?.songUpsert({
       youtubeId: t.youtubeId,
@@ -428,6 +434,7 @@ export const usePlayerStore = create<PlayerState>()(
         volume: state.volume,
         shuffle: state.shuffle,
         repeat: state.repeat,
+        songCounter: state.songCounter,
       }),
     }
   )

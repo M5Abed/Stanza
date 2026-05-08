@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.mohamedabed.stanza",
   "productName": "Stanza",
-  "buildVersion": "2.1",
+  "buildVersion": "2.2",
   "asar": true,
   "asarUnpack": [
     "node_modules/.prisma/**/*",
@@ -10,7 +10,7 @@
   ],
   "forceCodeSigning": false,
   "directories": {
-    "output": "release/v2.1"
+    "output": "release/v2.2"
   },
   "files": [
     "dist-electron",
@@ -39,7 +39,7 @@
     }
   ],
   "mac": {
-    "artifactName": "${productName}_2.1_mac.${ext}",
+    "artifactName": "${productName}_2.2_mac.${ext}",
     "target": [
       {
         "target": "zip",
@@ -56,7 +56,7 @@
       }
     ],
     "icon": "build/icon.ico",
-    "artifactName": "${productName}_2.1.${ext}",
+    "artifactName": "${productName}_2.2.${ext}",
     "sign": null,
     "signDlls": false
   },

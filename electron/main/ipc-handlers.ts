@@ -21,6 +21,7 @@ import { aggregateLyrics } from './lyrics-aggregator'
 import { spotifySearchMetadata, spotifyFetchCoverUrl, spotifyFetchArtistImage } from './spotify-metadata'
 import { playbackUrlForYoutubeId } from './register-protocol'
 import { downloadSong, deleteDownload, isDownloaded, broadcastDownloadProgress } from './download-manager'
+import { generateSongStory } from './gemini'
 function getArtistName(tItem: any): string {
   if (!tItem) return 'Unknown'
   if (Array.isArray(tItem.artists) && tItem.artists.length > 0) return tItem.artists.map((a: any) => a.name).join(', ')
@@ -76,6 +77,8 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IpcChannels.playlistSetOffline)
   ipcMain.removeHandler(IpcChannels.lyricsExport)
   ipcMain.removeHandler(IpcChannels.lyricsImport)
+
+  ipcMain.removeHandler(IpcChannels.geminiSongStory)
 
   function upscaleGoogleUrl(url: string | null | undefined): string | null {
     if (!url) return null
@@ -1221,5 +1224,16 @@ export function registerIpcHandlers(): void {
     const fs = await import('node:fs')
     const lrcRaw = fs.readFileSync(result.filePaths[0], 'utf-8')
     return { ok: true, lrcRaw }
+  })
+
+  // ─── Gemini AI ───────────────────────────────────────────────
+
+  
+  ipcMain.handle(IpcChannels.getTrackViews, async (_evt, raw: unknown) => { const { youtubeId } = raw as { youtubeId: string }; try { const yt = await getInnertube(); const info = await yt.getBasicInfo(youtubeId); return info.basic_info.view_count || 0; } catch { return 0; } });
+
+  ipcMain.handle(IpcChannels.geminiSongStory, async (_evt, raw: unknown) => {
+    const data = raw as { title: string; artist: string }
+    const result = await generateSongStory(data.title ?? 'Unknown', data.artist ?? 'Unknown')
+    return result
   })
 }

@@ -102,6 +102,10 @@ export interface VibestreamPreload {
   sendFloatingLyricsState: (data: any) => void
   onFloatingLyricsState: (callback: (data: any) => void) => () => void
   onFloatingLyricsClosed: (callback: () => void) => () => void
+  // Gemini AI
+
+  getSongStory: (title: string, artist: string) => Promise<{ story: string; meaning: string; trivia: string }>
+  getTrackViews: (youtubeId: string) => Promise<number>
 }
 
 export {}

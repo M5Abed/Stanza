@@ -187,29 +187,28 @@ export function AlbumView({ albumId }: { albumId: string }) {
         </button>
 
         {/* Save to Library */}
-        {isYtmPlaylist && (
-          <button
-            onClick={() => {
-              if (saved) {
-                removePlaylist(albumId)
-              } else {
-                savePlaylist({
-                  playlistId: albumId,
-                  title: album.title,
-                  author: album.artist || 'Unknown',
-                  thumbnailUrl: album.thumbnailUrl,
-                  trackCount: album.tracks.length,
-                })
-              }
-            }}
-            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-110 ${
-              saved ? 'text-theme-accent' : 'text-white/50 hover:text-white'
-            }`}
-            title={saved ? 'Remove from Library' : 'Save to Library'}
-          >
-            <Heart className={`h-6 w-6 ${saved ? 'fill-current' : ''}`} />
-          </button>
-        )}
+        <button
+          onClick={() => {
+            if (saved) {
+              removePlaylist(albumId)
+            } else {
+              savePlaylist({
+                playlistId: albumId,
+                title: album.title,
+                author: album.artist || 'Unknown',
+                thumbnailUrl: album.thumbnailUrl,
+                trackCount: album.tracks.length,
+                type: isYtmPlaylist ? 'playlist' : 'album',
+              })
+            }
+          }}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-110 ${
+            saved ? 'text-theme-accent' : 'text-white/50 hover:text-white'
+          }`}
+          title={saved ? 'Remove from Library' : 'Save to Library'}
+        >
+          <Heart className={`h-6 w-6 ${saved ? 'fill-current' : ''}`} />
+        </button>
 
         {/* Download All */}
         {saved && (

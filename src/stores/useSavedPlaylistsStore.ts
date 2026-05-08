@@ -6,6 +6,7 @@ export interface SavedYtmPlaylist {
   author: string
   thumbnailUrl: string | null
   trackCount: number | null
+  type?: 'album' | 'playlist'
   savedAt: number
 }
 

@@ -1,4 +1,4 @@
-import { Home, Search, Library, Plus, Heart, Download, Edit2, Trash2, ListMusic } from 'lucide-react'
+import { Home, Search, Library, Plus, Heart, Download, Edit2, Trash2, ListMusic, Radio } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { useSavedPlaylistsStore } from '@/stores/useSavedPlaylistsStore'
@@ -57,6 +57,7 @@ export function Sidebar() {
           </svg>
           <span>Suggestions</span>
         </button>
+
       </div>
 
       <div className='h-px w-full bg-white/10 my-2 rounded-full' />
@@ -159,7 +160,7 @@ export function Sidebar() {
                     </div>
                     <div className='flex flex-col truncate relative z-10 min-w-0 flex-1'>
                       <span className='truncate font-medium text-white/90'>{pl.title}</span>
-                      <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>{pl.author}{pl.trackCount ? ` • ${pl.trackCount} songs` : ''}</span>
+                      <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>{pl.type === 'album' ? 'Album' : 'Playlist'}{pl.author ? ` • ${pl.author}` : ''}{pl.trackCount ? ` • ${pl.trackCount} songs` : ''}</span>
                     </div>
                   </button>
                 )

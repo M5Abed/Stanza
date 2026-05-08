@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type AppView = 'home' | 'search' | 'radio' | 'queue' | `playlist-${string}` | `album-${string}` | `artist-${string}` | `artist-songs-${string}`
+export type AppView = 'home' | 'search' | 'radio' | 'queue' | 'dj' | `playlist-${string}` | `album-${string}` | `artist-${string}` | `artist-songs-${string}`
 
 interface UIState {
   activeView: AppView

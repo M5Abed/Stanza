@@ -131,4 +131,10 @@ contextBridge.exposeInMainWorld('vibestream', {
     ipcRenderer.on(IpcChannels.floatingLyricsClosed, handler)
     return () => { ipcRenderer.off(IpcChannels.floatingLyricsClosed, handler) }
   },
+  // Gemini AI
+
+  getSongStory: (title: string, artist: string) =>
+    invoke<{ story: string; meaning: string; trivia: string }>(IpcChannels.geminiSongStory, { title, artist }),
+  getTrackViews: (youtubeId: string) =>
+    invoke<number>(IpcChannels.getTrackViews, { youtubeId }),
 })

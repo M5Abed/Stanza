@@ -23,6 +23,7 @@ import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { useUIStore, AppView } from '@/stores/useUIStore'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { LyricsPanel } from './LyricsPanel'
+import { SongStory } from './SongStory'
 import { motion } from 'framer-motion'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useThemeStore } from '@/stores/useThemeStore'
@@ -293,6 +294,7 @@ export function PlayerBar() {
           >
             <ListMusic className='h-[18px] w-[18px]' />
           </button>
+          <SongStory />
           <LyricsPanel />
           <div className='group relative flex h-2 w-24 items-center' onWheel={handleVolumeWheel}>
             <Volume2 className='h-5 w-5 mr-3 shrink-0' />
