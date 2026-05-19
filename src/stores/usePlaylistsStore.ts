@@ -13,6 +13,7 @@ type SavedSong = {
 export type PlaylistType = {
   id: string
   name: string
+  coverUrl?: string | null
   sortOrder: number
   offlineEnabled?: boolean
   tracks: { position: number; song: SavedSong }[]
@@ -27,6 +28,7 @@ interface PlaylistsState {
   fetchPlaylists: () => Promise<void>
   createPlaylist: (name: string) => Promise<void>
   renamePlaylist: (playlistId: string, name: string) => Promise<void>
+  updateCover: (playlistId: string) => Promise<void>
   deletePlaylist: (playlistId: string) => Promise<void>
   addTrack: (playlistId: string, track: Track) => Promise<void>
   removeTrack: (playlistId: string, youtubeId: string) => Promise<void>
@@ -78,6 +80,18 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       await get().fetchPlaylists() // sync layout
     } catch (err) {
       console.error('Failed to rename playlist:', err)
+    }
+  },
+
+  updateCover: async (playlistId: string) => {
+    if (!window.vibestream) return
+    try {
+      const res = await window.vibestream.updatePlaylistCover(playlistId)
+      if (res.coverUrl) {
+        await get().fetchPlaylists()
+      }
+    } catch (err) {
+      console.error('Failed to update playlist cover:', err)
     }
   },
 

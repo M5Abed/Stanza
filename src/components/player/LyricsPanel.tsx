@@ -338,6 +338,8 @@ export function LyricsPanel() {
   const [activeLineIdx, setActiveLineIdx] = useState(0)
   const [editorTrackId, setEditorTrackId] = useState<string | null>(null) // locked to the song being edited
   const editorScrollRef = useRef<HTMLDivElement>(null)
+  const skipNextFetchRef = useRef(false)
+  const fetchVersionRef = useRef(0)
 
   // Poll positionSec at 4Hz while editing instead of subscribing to the 30Hz store updates.
   // This prevents the entire editor (hundreds of EditorLine components) from re-rendering every 33ms.
@@ -513,6 +515,7 @@ export function LyricsPanel() {
 
   const fetchLyrics = useCallback(async () => {
     if (!current || !window.vibestream) return
+    const myVersion = ++fetchVersionRef.current
     setLoading(true)
     setLyricsData(null)
     setSource('none')
@@ -522,6 +525,12 @@ export function LyricsPanel() {
         title: current.title,
         artist: current.artist,
       })
+
+      // If a newer fetch or import happened while we were waiting, discard this result
+      if (myVersion !== fetchVersionRef.current) {
+        console.log('[fetchLyrics] STALE — discarding (v' + myVersion + ' vs v' + fetchVersionRef.current + ')')
+        return
+      }
 
       setSource(result.source as LyricsSource)
 
@@ -548,18 +557,25 @@ export function LyricsPanel() {
       }
     } catch (e) {
       console.error('[lyrics]', e)
-      setLyricsData(null)
+      if (myVersion === fetchVersionRef.current) setLyricsData(null)
     } finally {
-      setLoading(false)
+      if (myVersion === fetchVersionRef.current) setLoading(false)
     }
   }, [current?.youtubeId, current?.title, current?.artist])
 
   useEffect(() => {
+    console.log('[effect] fetchLyrics effect fired, skip:', skipNextFetchRef.current, 'visible:', visible, 'floatingOpen:', floatingOpen, 'current:', current?.youtubeId)
+    if (skipNextFetchRef.current) {
+      console.log('[effect] SKIPPED (import just happened)')
+      skipNextFetchRef.current = false
+      return
+    }
     if ((visible || floatingOpen) && current) {
       // Reset scroll to top immediately for the new song
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0
       }
+      console.log('[effect] calling fetchLyrics()')
       void fetchLyrics()
     }
   }, [visible, floatingOpen, current?.youtubeId, fetchLyrics])
@@ -599,41 +615,56 @@ export function LyricsPanel() {
 
   /** Import lyrics from .lrc file */
   const handleImportLyrics = useCallback(async () => {
-    if (!window.vibestream || !current) return
-    try {
-      const result = await window.vibestream.importLyrics()
-      if (result.ok && result.lrcRaw) {
-        // Ensure the song exists in DB first (required for ManualLyrics FK)
-        try {
-          await window.vibestream.songUpsert({
-            youtubeId: current.youtubeId,
-            title: current.title,
-            artist: current.artist ?? null,
-            album: current.album ?? null,
-            thumbnailUrl: current.thumbnailUrl ?? null,
-            durationSeconds: current.durationSeconds != null ? Math.round(current.durationSeconds) : null,
-          })
-        } catch (e) {
-          console.warn('[lyrics:import] songUpsert failed:', e)
-        }
-        // Save lyrics to DB
-        try {
-          await window.vibestream.saveManualLyrics(current.youtubeId, result.lrcRaw)
-        } catch (e) {
-          console.error('[lyrics:import] saveManualLyrics failed:', e)
-        }
-        // Re-fetch lyrics from DB (aggregator checks ManualLyrics first, evicts stale cache)
-        await fetchLyrics()
-      }
-    } catch (e) {
-      console.error('[lyrics:import] Import failed:', e)
-    } finally {
-      // Restore fullscreen (native dialog forces exit on Windows)
-      if (visible) {
-        window.vibestream?.setFullscreen(true).catch(() => {})
-      }
+    console.log('[import] handleImportLyrics called, current:', current?.youtubeId)
+    if (!window.vibestream || !current) {
+      console.log('[import] ABORT: no vibestream or no current')
+      return
     }
-  }, [current, visible, fetchLyrics])
+    try {
+      console.log('[import] calling importLyrics IPC...')
+      const result = await window.vibestream.importLyrics()
+      console.log('[import] IPC result:', { ok: result.ok, hasLrcRaw: !!result.lrcRaw, lrcLen: result.lrcRaw?.length })
+      if (!result.ok || !result.lrcRaw) {
+        console.log('[import] ABORT: result not ok or no lrcRaw')
+        return
+      }
+
+      // Immediately parse and display the imported lyrics (no DB dependency)
+      const parsed = parseLrcToLines(result.lrcRaw)
+      console.log('[import] parsed lines:', parsed.length, 'first 3:', parsed.slice(0, 3))
+      if (parsed.length > 0) {
+        // Bump fetch version to invalidate any in-flight fetchLyrics call
+        fetchVersionRef.current++
+        skipNextFetchRef.current = true
+        console.log('[import] setting lyricsData, source=local, loading=false, fetchVersion:', fetchVersionRef.current)
+        setLyricsData(parsed)
+        setSource('local')
+        setLoading(false)
+        setIsEditing(false)
+      } else {
+        console.log('[import] ABORT: parsed is empty')
+      }
+
+      // Persist to DB (best-effort): ensure the Song row exists first (FK constraint)
+      try {
+        await window.vibestream.songUpsert({
+          youtubeId: current.youtubeId,
+          title: current.title,
+          artist: current.artist ?? null,
+          album: (current as any).album ?? null,
+          thumbnailUrl: current.thumbnailUrl ?? null,
+          durationSeconds: current.durationSeconds ?? null,
+        })
+        await window.vibestream.saveManualLyrics(current.youtubeId, result.lrcRaw)
+        console.log('[import] DB save OK')
+      } catch (dbErr) {
+        console.warn('[import] DB save failed (lyrics still displayed):', dbErr)
+      }
+    } catch (err) {
+      console.error('[import] Import failed:', err)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current])
 
   // Handle OS Fullscreen Request
   useEffect(() => {
@@ -652,6 +683,8 @@ export function LyricsPanel() {
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     requestSeek(Number(e.target.value))
   }
+
+  console.log('[RENDER] visible:', visible, 'loading:', loading, 'lyricsData:', lyricsData ? `${lyricsData.length} lines` : 'null', 'isEditing:', isEditing)
 
   const panel = (
     <div className='fixed inset-0 z-[9999] flex overflow-hidden bg-[#121212]'>

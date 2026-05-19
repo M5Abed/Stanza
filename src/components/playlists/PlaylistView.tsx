@@ -108,16 +108,33 @@ export function PlaylistView({ playlistId }: { playlistId: string }) {
     <div className='flex flex-col h-full animate-in fade-in'>
       {/* Header */}
       <div className='flex flex-col md:flex-row items-end gap-8 p-8 border-b border-white/5 bg-gradient-to-b from-theme-elevated/80 to-transparent'>
-        <div className='h-48 w-48 shrink-0 shadow-[0_15px_40px_rgba(0,0,0,0.5)] rounded-2xl flex items-center justify-center bg-[#111] overflow-hidden relative'>
+        <div 
+          onClick={() => {
+            if (!isLikedSongs && playlist.name !== 'Downloaded Songs') {
+              usePlaylistsStore.getState().updateCover(playlist.id)
+            }
+          }}
+          className={`h-48 w-48 shrink-0 shadow-[0_15px_40px_rgba(0,0,0,0.5)] rounded-2xl flex items-center justify-center bg-[#111] overflow-hidden relative group ${!isLikedSongs && playlist.name !== 'Downloaded Songs' ? 'cursor-pointer' : ''}`}
+        >
            {isLikedSongs ? (
              <div className='absolute inset-0 bg-gradient-to-tr from-theme-accent to-pink-600' />
+           ) : playlist.coverUrl ? (
+             <img src={playlist.coverUrl} className='h-full w-full object-cover opacity-90' onError={(e) => handleImgError(e)} />
            ) : playlist.tracks.length > 0 && playlist.tracks[0].song.thumbnailUrl ? (
              <img src={getHighResUrl(playlist.tracks[0].song.thumbnailUrl)} className='h-full w-full object-cover opacity-90' onError={(e) => handleImgError(e)} />
            ) : (
              <div className='absolute inset-0 bg-theme-surface' />
            )}
+           
+           {/* Upload Overlay */}
+           {!isLikedSongs && playlist.name !== 'Downloaded Songs' && (
+             <div className='absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20 backdrop-blur-sm'>
+               <Edit2 className='h-10 w-10 text-white' />
+             </div>
+           )}
+
            {isLikedSongs && <Heart className='h-20 w-20 text-white drop-shadow-2xl z-10' fill='currentColor' />}
-           {!isLikedSongs && (!playlist.tracks.length || !playlist.tracks[0].song.thumbnailUrl) && <Music2 className='h-16 w-16 text-theme-subtext/50 z-10' />}
+           {!isLikedSongs && !playlist.coverUrl && (!playlist.tracks.length || !playlist.tracks[0].song.thumbnailUrl) && <Music2 className='h-16 w-16 text-theme-subtext/50 z-10' />}
         </div>
         
         <div className='flex flex-col gap-3 min-w-0'>

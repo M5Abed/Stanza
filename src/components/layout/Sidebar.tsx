@@ -1,7 +1,8 @@
-import { Home, Search, Library, Plus, Heart, Download, Edit2, Trash2, ListMusic, Radio } from 'lucide-react'
+import { Home, Search, Library, Plus, Heart, Download, Edit2, Trash2, ListMusic, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
 import { useSavedPlaylistsStore } from '@/stores/useSavedPlaylistsStore'
+import { useSavedArtistsStore } from '@/stores/useSavedArtistsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 
@@ -9,6 +10,7 @@ export function Sidebar() {
   const { playlists, createPlaylist, fetchPlaylists, renamePlaylist, deletePlaylist } = usePlaylistsStore()
   const savedYtmPlaylists = useSavedPlaylistsStore((s) => s.savedPlaylists)
   const removeSavedPlaylist = useSavedPlaylistsStore((s) => s.removePlaylist)
+  const savedArtists = useSavedArtistsStore((s) => s.savedArtists)
   const { activeView, setActiveView } = useUIStore()
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; playlistId: string; isYtm?: boolean } | null>(null)
@@ -101,6 +103,8 @@ export function Sidebar() {
                    <div className='h-full w-full bg-black flex items-center justify-center shadow-lg text-green-400 font-bold'>
                      <Download className='h-6 w-6' />
                    </div>
+                 ) : playlist.coverUrl ? (
+                   <img src={playlist.coverUrl} className='h-full w-full object-cover' onError={handleImgError} />
                  ) : (
                    <>
                      <div className='h-6 w-6 rounded-full bg-theme-accent/20 blur-sm absolute' />
@@ -161,6 +165,35 @@ export function Sidebar() {
                     <div className='flex flex-col truncate relative z-10 min-w-0 flex-1'>
                       <span className='truncate font-medium text-white/90'>{pl.title}</span>
                       <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>{pl.type === 'album' ? 'Album' : 'Playlist'}{pl.author ? ` • ${pl.author}` : ''}{pl.trackCount ? ` • ${pl.trackCount} songs` : ''}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </>
+          )}
+
+          {/* Saved Artists */}
+          {savedArtists.length > 0 && (
+            <>
+              <div className='h-px w-full bg-white/10 my-3 rounded-full' />
+              {savedArtists.map((artist) => {
+                const isActive = activeView === `artist-${artist.artistId}`
+                return (
+                  <button
+                    key={artist.artistId}
+                    onClick={() => setActiveView(`artist-${artist.artistId}` as any)}
+                    className={`flex w-full items-center gap-4 rounded-2xl p-2 text-left text-sm transition-all hover:bg-white/5 hover:text-white ${isActive ? 'bg-white/10 text-white' : 'text-theme-subtext'}`}
+                  >
+                    <div className='h-12 w-12 shrink-0 rounded-full bg-theme-elevated flex items-center justify-center shadow-inner overflow-hidden border border-white/5'>
+                      {artist.thumbnailUrl ? (
+                        <img src={getHighResUrl(artist.thumbnailUrl)} alt='' className='h-full w-full object-cover' onError={handleImgError} />
+                      ) : (
+                        <User className='h-5 w-5 text-theme-subtext' />
+                      )}
+                    </div>
+                    <div className='flex flex-col truncate relative z-10 min-w-0 flex-1'>
+                      <span className='truncate font-medium text-white/90'>{artist.name}</span>
+                      <span className='truncate text-xs text-theme-subtext/70 mt-0.5'>Artist</span>
                     </div>
                   </button>
                 )

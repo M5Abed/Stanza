@@ -206,6 +206,23 @@ function serveLocalFile(filePath: string, rangeHeader: string | null): Response 
 
 export function registerVibestreamProtocolHandler(): void {
   protocol.handle(SCHEME, async (request) => {
+    let url: URL
+    try {
+      url = new URL(request.url)
+    } catch {
+      return new Response('Invalid URL', { status: 400 })
+    }
+
+    if (url.hostname === 'cover') {
+      const filename = url.pathname.replace(/^\//, '').split('/')[0]
+      if (!filename) return new Response('No filename', { status: 400 })
+      
+      const filePath = path.join(app.getPath('userData'), 'covers', decodeURIComponent(filename))
+      if (!fs.existsSync(filePath)) return new Response('Not found', { status: 404 })
+      
+      return serveLocalFile(filePath, request.headers.get('Range'))
+    }
+
     const videoId = parseYoutubeIdFromRequestUrl(request.url)
     if (!videoId || !isValidVideoId(videoId)) {
       return new Response('Invalid video id', { status: 400 })

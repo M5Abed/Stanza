@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Heart, ListPlus, Download, User, Disc, PlaySquare, Music2, Share2, FolderPlus, ListMusic, ChevronLeft } from 'lucide-react'
+import { Heart, ListPlus, Download, User, Disc, PlaySquare, Music2, Share2 } from 'lucide-react'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
@@ -11,7 +11,7 @@ import { splitArtists } from '@/components/ui/ArtistLinks'
 export function ContextMenu() {
   const { isOpen, x, y, track, closeMenu } = useContextMenuStore()
   const [downloading, setDownloading] = useState(false)
-  const [showPlaylists, setShowPlaylists] = useState(false)
+  const [view, setView] = useState<'main' | 'playlists'>('main')
   
   const menuRef = useRef<HTMLDivElement>(null)
   
@@ -19,9 +19,6 @@ export function ContextMenu() {
   const playNext = usePlayerStore(s => s.playNext)
   const isLiked = usePlaylistsStore(s => s.isLiked)
   const toggleLiked = usePlaylistsStore(s => s.toggleLiked)
-  const playlists = usePlaylistsStore(s => s.playlists)
-  const addTrack = usePlaylistsStore(s => s.addTrack)
-  const likedSongsPlaylistId = usePlaylistsStore(s => s.likedSongsPlaylistId)
   const setActiveView = useUIStore(s => s.setActiveView)
 
   // Handle clicking outside to close
@@ -48,12 +45,13 @@ export function ContextMenu() {
     }
   }, [isOpen, closeMenu])
 
+  // Reset view when menu opens or track changes
   useEffect(() => {
-    if (!isOpen) {
-      setShowPlaylists(false)
-    }
-  }, [isOpen])
+    if (isOpen) setView('main')
+  }, [isOpen, track])
 
+  const { playlists, addTrack } = usePlaylistsStore()
+  
   if (!isOpen || !track) return null
 
   // Calculate adjusted position to prevent clipping
@@ -61,6 +59,8 @@ export function ContextMenu() {
   const menuHeight = 350 // rough estimate
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x
   const adjustedY = y + menuHeight > window.innerHeight ? window.innerHeight - menuHeight - 10 : y
+
+  const userPlaylists = playlists.filter(p => p.name !== 'Liked Songs' && p.name !== 'Downloaded Songs')
 
   const liked = isLiked(track.youtubeId)
 
@@ -89,7 +89,12 @@ export function ContextMenu() {
     closeMenu()
   }
 
-  const userPlaylists = playlists.filter(p => p.id !== likedSongsPlaylistId)
+  const handleAddToPlaylist = async (playlistId: string) => {
+    if (track) {
+      await addTrack(playlistId, track)
+    }
+    closeMenu()
+  }
 
   return (
     <AnimatePresence>
@@ -117,32 +122,8 @@ export function ContextMenu() {
           </div>
         </div>
 
-        {/* Actions */}
-        {showPlaylists ? (
-          <div className='flex flex-col max-h-[250px] overflow-y-auto px-2 gap-0.5 custom-scrollbar'>
-            <button 
-              onClick={() => setShowPlaylists(false)}
-              className='flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 text-sm font-medium text-white/90 transition-colors'
-            >
-              <ChevronLeft className='h-4 w-4 shrink-0' /> Back
-            </button>
-            <div className='h-[1px] bg-white/5 my-1.5 mx-3' />
-            {userPlaylists.length === 0 ? (
-              <div className='px-3 py-2.5 text-sm text-white/50 text-center'>No playlists found</div>
-            ) : (
-              userPlaylists.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => { addTrack(p.id, track); closeMenu() }}
-                  className='flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 text-sm font-medium text-white/90 transition-colors text-left'
-                >
-                  <ListMusic className='h-4 w-4 shrink-0' /> 
-                  <span className='truncate'>{p.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        ) : (
+        {/* Actions or Playlists Submenu */}
+        {view === 'main' ? (
           <>
             <div className='flex flex-col px-2 gap-0.5'>
               <button 
@@ -158,6 +139,16 @@ export function ContextMenu() {
               >
                 <ListPlus className='h-4 w-4' /> Add to Queue
               </button>
+
+              <button 
+                onClick={() => setView('playlists')}
+                className='flex items-center justify-between px-3 py-2.5 rounded-md hover:bg-white/10 text-sm font-medium text-white/90 transition-colors'
+              >
+                <div className='flex items-center gap-3'>
+                  <ListPlus className='h-4 w-4' /> Add to Playlist
+                </div>
+                <span className='text-white/50 text-xs'>▶</span>
+              </button>
               
               <button 
                 onClick={() => { toggleLiked(track); closeMenu() }}
@@ -165,13 +156,6 @@ export function ContextMenu() {
               >
                 <Heart className={`h-4 w-4 ${liked ? 'fill-theme-accent text-theme-accent drop-shadow-[0_0_8px_rgba(212,0,33,0.5)]' : ''}`} /> 
                 {liked ? 'Remove from Liked' : 'Save to Liked Songs'}
-              </button>
-
-              <button 
-                onClick={() => setShowPlaylists(true)}
-                className='flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 text-sm font-medium text-white/90 transition-colors'
-              >
-                <FolderPlus className='h-4 w-4' /> Add to Playlist
               </button>
 
               <button 
@@ -210,6 +194,32 @@ export function ContextMenu() {
               </>
             )}
           </>
+        ) : (
+          <div className='flex flex-col'>
+            <div className='flex items-center gap-2 px-3 py-2 border-b border-white/5 mb-1'>
+              <button onClick={() => setView('main')} className='p-1 hover:bg-white/10 rounded-md transition-colors'>
+                <span className='text-white/70 text-xs'>◀</span>
+              </button>
+              <span className='text-sm font-bold text-white'>Add to Playlist</span>
+            </div>
+            <div className='flex flex-col max-h-60 overflow-y-auto px-2 gap-0.5 custom-scrollbar'>
+              {userPlaylists.length > 0 ? (
+                userPlaylists.map(playlist => (
+                  <button
+                    key={playlist.id}
+                    onClick={() => handleAddToPlaylist(playlist.id)}
+                    className='flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 text-sm font-medium text-white/90 transition-colors text-left truncate'
+                  >
+                    <span className='truncate'>{playlist.name}</span>
+                  </button>
+                ))
+              ) : (
+                <div className='px-3 py-4 text-center text-sm text-theme-subtext'>
+                  No playlists yet
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </motion.div>
     </AnimatePresence>
