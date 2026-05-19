@@ -353,15 +353,24 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   previous: () => {
-    const { queue, currentIndex, repeat } = get()
+    const { queue, currentIndex, repeat, positionSec } = get()
     if (queue.length === 0) return
+
+    // If past 3 seconds into the song, restart from the beginning
+    if (positionSec > 3) {
+      set({ positionSec: 0, pendingSeekSec: 0 })
+      return
+    }
+
+    // Within first 3 seconds — go to the previous track
     const prevIdx = currentIndex - 1
     if (prevIdx < 0) {
       if (repeat === 'all') {
         get().playQueueIndex(queue.length - 1, true)
         return
       }
-      set({ isPlaying: false })
+      // No previous track — just restart the current one
+      set({ positionSec: 0, pendingSeekSec: 0 })
       return
     }
     get().playQueueIndex(prevIdx, true)

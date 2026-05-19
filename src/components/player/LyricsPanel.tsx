@@ -600,14 +600,40 @@ export function LyricsPanel() {
   /** Import lyrics from .lrc file */
   const handleImportLyrics = useCallback(async () => {
     if (!window.vibestream || !current) return
-    const result = await window.vibestream.importLyrics()
-    if (result.ok && result.lrcRaw) {
-      // Save to DB
-      await window.vibestream.saveManualLyrics(current.youtubeId, result.lrcRaw)
-      // Refresh lyrics
-      fetchLyrics()
+    try {
+      const result = await window.vibestream.importLyrics()
+      if (result.ok && result.lrcRaw) {
+        // Ensure the song exists in DB first (required for ManualLyrics FK)
+        try {
+          await window.vibestream.songUpsert({
+            youtubeId: current.youtubeId,
+            title: current.title,
+            artist: current.artist ?? null,
+            album: current.album ?? null,
+            thumbnailUrl: current.thumbnailUrl ?? null,
+            durationSeconds: current.durationSeconds != null ? Math.round(current.durationSeconds) : null,
+          })
+        } catch (e) {
+          console.warn('[lyrics:import] songUpsert failed:', e)
+        }
+        // Save lyrics to DB
+        try {
+          await window.vibestream.saveManualLyrics(current.youtubeId, result.lrcRaw)
+        } catch (e) {
+          console.error('[lyrics:import] saveManualLyrics failed:', e)
+        }
+        // Re-fetch lyrics from DB (aggregator checks ManualLyrics first, evicts stale cache)
+        await fetchLyrics()
+      }
+    } catch (e) {
+      console.error('[lyrics:import] Import failed:', e)
+    } finally {
+      // Restore fullscreen (native dialog forces exit on Windows)
+      if (visible) {
+        window.vibestream?.setFullscreen(true).catch(() => {})
+      }
     }
-  }, [current, fetchLyrics])
+  }, [current, visible, fetchLyrics])
 
   // Handle OS Fullscreen Request
   useEffect(() => {

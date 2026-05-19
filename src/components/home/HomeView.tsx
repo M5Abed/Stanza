@@ -1,9 +1,21 @@
+import { useEffect, useState } from 'react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { motion } from 'framer-motion'
-import { Plus, Play } from 'lucide-react'
+import { Plus, Play, Loader2 } from 'lucide-react'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useRadioStore } from '@/stores/useRadioStore'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
+import { useUIStore } from '@/stores/useUIStore'
+
+interface ExploreSection {
+  title: string
+  playlists: {
+    browseId: string
+    title: string
+    subtitle: string
+    thumbnailUrl: string | null
+  }[]
+}
 
 export function HomeView() {
   const queue = usePlayerStore(s => s.queue)
@@ -17,9 +29,30 @@ export function HomeView() {
   const suggestions = useRadioStore(s => s.suggestions)
   const fetchRecommendations = useRadioStore(s => s.fetchRecommendations)
   const openMenu = useContextMenuStore(s => s.openMenu)
+  const setActiveView = useUIStore(s => s.setActiveView)
+
+  const [exploreSections, setExploreSections] = useState<ExploreSection[]>([])
+  const [exploreLoading, setExploreLoading] = useState(false)
 
   // Use the new dedicated history array, taking up to the 8 most recent unique tracks
   const recent = history.slice(0, 8)
+
+  // Fetch explore playlists on mount
+  useEffect(() => {
+    async function fetchExplore() {
+      if (!window.vibestream?.getExplorePlaylists) return
+      setExploreLoading(true)
+      try {
+        const sections = await window.vibestream.getExplorePlaylists()
+        setExploreSections(sections)
+      } catch (err) {
+        console.error('[home] Failed to load explore:', err)
+      } finally {
+        setExploreLoading(false)
+      }
+    }
+    fetchExplore()
+  }, [])
 
   return (
     <div className='flex flex-col gap-8'>
@@ -114,6 +147,52 @@ export function HomeView() {
           </div>
         )}
       </div>
+
+      {/* YouTube Music Explore — Curated Playlists */}
+      {exploreLoading && (
+        <div className='flex items-center gap-3 py-10 text-[#a7a7a7]'>
+          <Loader2 className='h-6 w-6 animate-spin text-theme-accent' />
+          <span className='font-medium'>Loading playlists...</span>
+        </div>
+      )}
+
+      {exploreSections.map((section, si) => (
+        <div key={`explore-${si}`}>
+          <h2 className='mb-6 text-3xl font-bold text-white drop-shadow-md'>{section.title}</h2>
+          <div className='grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'>
+            {section.playlists.map((pl, pi) => (
+              <motion.div
+                key={`${pl.browseId}-${pi}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: pi * 0.03 }}
+                onClick={() => setActiveView(`album-${pl.browseId}` as any)}
+                className='group flex flex-col gap-3 rounded-2xl p-4 transition-all hover:bg-white/5 bg-theme-surface/30 border border-white/5 shadow-md cursor-pointer'
+              >
+                <div className='relative aspect-square w-full overflow-hidden rounded-xl bg-stone-800 shadow-lg'>
+                  {pl.thumbnailUrl && (
+                    <img
+                      src={getHighResUrl(pl.thumbnailUrl)}
+                      className='h-full w-full object-cover transition-transform duration-500 group-hover:scale-105'
+                      alt={pl.title}
+                      onError={(e) => handleImgError(e)}
+                    />
+                  )}
+                  <div className='absolute inset-0 bg-black/30 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center'>
+                    <Play className='h-10 w-10 text-white drop-shadow-lg' fill='currentColor' />
+                  </div>
+                </div>
+                <div className='flex flex-col min-w-0'>
+                  <span className='truncate font-bold text-white/90 drop-shadow-sm group-hover:text-theme-cyan transition-colors'>{pl.title}</span>
+                  {pl.subtitle && (
+                    <span className='truncate text-sm text-theme-subtext mt-1'>{pl.subtitle}</span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

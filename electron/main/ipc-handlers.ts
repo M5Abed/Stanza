@@ -70,6 +70,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IpcChannels.playlistsAddTrack)
   ipcMain.removeHandler(IpcChannels.playlistsRemoveTrack)
   ipcMain.removeHandler(IpcChannels.playlistsRename)
+  ipcMain.removeHandler(IpcChannels.playlistsUpdateCover)
   ipcMain.removeHandler(IpcChannels.playlistsDelete)
   ipcMain.removeHandler(IpcChannels.downloadSong)
   ipcMain.removeHandler(IpcChannels.deleteSong)
@@ -79,6 +80,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IpcChannels.lyricsImport)
 
   ipcMain.removeHandler(IpcChannels.geminiSongStory)
+  ipcMain.removeHandler(IpcChannels.exploreGetPlaylists)
 
   function upscaleGoogleUrl(url: string | null | undefined): string | null {
     if (!url) return null
@@ -98,7 +100,7 @@ export function registerIpcHandlers(): void {
   }
 
   function getBestYtThumbnail(thumbnails: any, videoId?: string): string | null {
-    // Prefer permanent i.ytimg.com URLs — they never expire
+    // Prefer permanent i.ytimg.com URLs â€” they never expire
     if (videoId) {
       return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
     }
@@ -117,9 +119,6 @@ export function registerIpcHandlers(): void {
     try {
       const yt = await getInnertube()
 
-      // Run YouTube + Spotify searches in parallel for speed
-      const ytResults = await yt.music.search(query, { type: 'song' })
-
       // Helper function to extract items from all sections, ignoring spelling corrections
       const extractSongs = (res: any) => {
         let items: any[] = []
@@ -136,21 +135,34 @@ export function registerIpcHandlers(): void {
         return items
       }
 
-      let songs = extractSongs(ytResults)
+      // Run YouTube song + video searches in parallel for speed
+      // Many artists (especially independent/regional) upload Music Videos
+      // without registering 'Song' metadata — we need both types.
+      const [ytSongResults, ytVideoResults] = await Promise.all([
+        yt.music.search(query, { type: 'song' }),
+        yt.music.search(query, { type: 'video' }),
+      ])
 
-      // Independent artists often upload Music Videos without registering 'Song' metadata schemas with Google
-      if (songs.length === 0) {
-        const fallback = await yt.music.search(query, { type: 'video' })
-        songs = extractSongs(fallback)
+      const songItems = extractSongs(ytSongResults)
+      const videoItems = extractSongs(ytVideoResults)
+
+      // Merge: songs first, then videos that aren't duplicates
+      const seenIds = new Set(songItems.map((s: any) => s.id).filter(Boolean))
+      const merged = [...songItems]
+      for (const v of videoItems) {
+        if (v?.id && !seenIds.has(v.id)) {
+          merged.push(v)
+          seenIds.add(v.id)
+        }
       }
 
-      const mapped = songs
+      const mapped = merged
         .filter((s: any) => s?.id)
         .slice(0, 30)
         .map((s: any) => ({
           youtubeId: s.id,
           title: s.title ?? s.name ?? 'Unknown',
-          artist: Array.isArray(s.artists) ? s.artists.map((a: any) => a.name).join(', ') : (s.artists?.name ?? null),
+          artist: Array.isArray(s.artists) ? s.artists.map((a: any) => a.name).join(', ') : (s.artists?.name ?? getArtistName(s) ?? null),
           album: s.album?.name ?? null,
           // Use YT Music API thumbnail (square album art) as initial source
           thumbnailUrl: getBestYtThumbnail(s.thumbnails),
@@ -272,7 +284,7 @@ export function registerIpcHandlers(): void {
         const spCover = await spotifyFetchCoverUrl(payload.title ?? '', payload.artist ?? '')
         if (spCover) bestThumb = spCover
       } catch {
-        // Spotify unavailable — use whatever URL we have
+        // Spotify unavailable â€” use whatever URL we have
       }
     }
 
@@ -443,6 +455,46 @@ export function registerIpcHandlers(): void {
     })
   })
 
+  ipcMain.handle(IpcChannels.playlistsUpdateCover, async (event, raw: unknown) => {
+    const { playlistId } = raw as { playlistId: string }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) throw new Error('No window')
+    
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Select Playlist Cover',
+      buttonLabel: 'Select Image',
+      filters: [{ name: 'Images', extensions: ['jpg', 'png', 'jpeg', 'webp'] }],
+      properties: ['openFile']
+    })
+    
+    if (canceled || filePaths.length === 0) return { coverUrl: null }
+    
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const crypto = require('node:crypto')
+    
+    const coversDir = path.join(app.getPath('userData'), 'covers')
+    if (!fs.existsSync(coversDir)) fs.mkdirSync(coversDir, { recursive: true })
+    
+    const source = filePaths[0]
+    const ext = path.extname(source)
+    const hash = crypto.randomBytes(8).toString('hex')
+    const filename = `${playlistId}-${hash}${ext}`
+    const dest = path.join(coversDir, filename)
+    
+    fs.copyFileSync(source, dest)
+    
+    const coverUrl = `vibestream://cover/${filename}`
+    
+    const db = getPrisma()
+    await db.playlist.update({
+      where: { id: playlistId },
+      data: { coverUrl }
+    })
+    
+    return { coverUrl }
+  })
+
   ipcMain.handle(IpcChannels.playlistsDelete, async (_evt, raw: unknown) => {
     const { playlistId } = PlaylistDeleteSchema.parse(raw)
     const db = getPrisma()
@@ -593,7 +645,7 @@ export function registerIpcHandlers(): void {
       console.warn('[vs:radio] Native getUpNext mix failed:', err)
     }
 
-    // Strategy 3: Last.fm similar tracks → search on YT Music (genre-aware)
+    // Strategy 3: Last.fm similar tracks â†’ search on YT Music (genre-aware)
     try {
       if (finalTracks.length < 10) {
         const apiKey = process.env.LASTFM_API_KEY
@@ -670,6 +722,7 @@ export function registerIpcHandlers(): void {
 
       // Instead of generic search, extract "Top songs" and "Albums"/"Singles" from official artist sections
       const topSongsRaw: any[] = []
+      const videosRaw: any[] = []
       const albums: any[] = []
       const singles: any[] = []
 
@@ -693,7 +746,7 @@ export function registerIpcHandlers(): void {
         const title = sec.title?.text || sec.header?.title?.text || ''
         const titleLo = title.toLowerCase()
 
-        if (titleLo.includes('album') || titleLo.includes('single') || titleLo.includes('ep') || titleLo === 'top songs' || titleLo === 'songs') {
+        if (titleLo.includes('album') || titleLo.includes('single') || titleLo.includes('ep') || titleLo === 'top songs' || titleLo === 'songs' || titleLo === 'videos' || titleLo.includes('video')) {
            const moreEndpoint = sec.header?.more_content?.endpoint || sec.bottom_text?.endpoint || sec.endpoint
            if (moreEndpoint) {
               sectionExpansions.push({
@@ -751,6 +804,32 @@ export function registerIpcHandlers(): void {
               })
            }
         }
+        else if (titleLo === 'videos' || titleLo.includes('video')) {
+           // Music Videos section — many artists (especially independent/regional)
+           // upload tracks as music videos without registering them as "songs".
+           for (const item of items) {
+             const youtubeId = item.id || item.videoId || item.endpoint?.payload?.videoId
+             if (!youtubeId) continue
+             let viewsCount = 0
+             if (item.flex_columns && item.flex_columns[2]) {
+                const viewsText = item.flex_columns[2].title?.text || ''
+                viewsCount = parseViews(viewsText)
+             } else if (item.views) {
+                viewsCount = parseViews(typeof item.views === 'string' ? item.views : item.views?.text || '')
+             }
+             videosRaw.push({
+               youtubeId,
+               title: item.title?.text || item.title || 'Unknown',
+               artist: getArtistName(item) || details.name,
+               album: item.album?.name || null,
+               thumbnailUrl: getBestYtThumbnail(item.thumbnail || item.thumbnails, youtubeId) || null,
+               durationSeconds: item.duration?.seconds || null,
+               isExplicit: Boolean(item.is_explicit),
+               views: viewsCount,
+               isVideo: true,
+             })
+           }
+         }
         else if (titleLo === 'albums') {
           albums.push(...items.map((c: any) => ({
             youtubeId: c.endpoint?.payload?.browseId || c.id,
@@ -773,9 +852,19 @@ export function registerIpcHandlers(): void {
 
       // Sort top songs specifically by view count highest to lowest
       topSongsRaw.sort((a, b) => b.views - a.views)
+
+      // Merge videos into topSongs — add any video not already present as a song
+      const songIds = new Set(topSongsRaw.map(s => s.youtubeId))
+      for (const v of videosRaw) {
+        if (!songIds.has(v.youtubeId)) {
+          topSongsRaw.push(v)
+          songIds.add(v.youtubeId)
+        }
+      }
       
       details.topSongs = topSongsRaw
       
+      ;(details as any).videos = videosRaw
       ;(details as any).albums = albums
       ;(details as any).singles = singles
 
@@ -783,7 +872,7 @@ export function registerIpcHandlers(): void {
       try {
         const spImage = await spotifyImagePromise
         if (spImage) details.thumbnailUrl = spImage
-      } catch { /* Spotify unavailable — keep YT thumbnail */ }
+      } catch { /* Spotify unavailable â€” keep YT thumbnail */ }
 
       // Enrich top song thumbnails with Spotify high-res covers (cap at 15 to avoid API spam)
       try {
@@ -792,7 +881,7 @@ export function registerIpcHandlers(): void {
           try {
             const spCover = await spotifyFetchCoverUrl(song.title, song.artist || '')
             if (spCover) song.thumbnailUrl = spCover
-          } catch { /* Spotify unavailable — keep YT thumbnail */ }
+          } catch { /* Spotify unavailable â€” keep YT thumbnail */ }
         }))
       } catch { /* non-fatal */ }
       
@@ -810,7 +899,7 @@ export function registerIpcHandlers(): void {
       let yt = await getInnertube()
       let albumId = queryId
 
-      // ── YouTube Music Playlist (VL… or OLAK5uy_…) ──
+      // â”€â”€ YouTube Music Playlist (VLâ€¦ or OLAK5uy_â€¦) â”€â”€
       // These are user playlists / community playlists, not albums. Use getPlaylist instead.
       const isPlaylist = albumId.startsWith('VL') || albumId.startsWith('OLAK5uy_')
       if (isPlaylist) {
@@ -820,7 +909,7 @@ export function registerIpcHandlers(): void {
         try {
           playlist = await yt.music.getPlaylist(playlistId)
         } catch (firstErr) {
-          console.warn(`[vs:album] getPlaylist(${playlistId}) failed, retrying…`, firstErr)
+          console.warn(`[vs:album] getPlaylist(${playlistId}) failed, retryingâ€¦`, firstErr)
           resetInnertube()
           yt = await getInnertube()
           playlist = await yt.music.getPlaylist(playlistId)
@@ -905,7 +994,7 @@ export function registerIpcHandlers(): void {
         try {
           const search = await yt.music.search(queryId, { type: 'album' })
           browseId = extractBrowseId(search)
-          console.log(`[vs:album] Searched "${queryId}" (type:album) → browseId: ${browseId}`)
+          console.log(`[vs:album] Searched "${queryId}" (type:album) â†’ browseId: ${browseId}`)
         } catch (e) {
           console.warn('[vs:album] album-type search failed for:', queryId, e)
         }
@@ -915,18 +1004,18 @@ export function registerIpcHandlers(): void {
           try {
             const search = await yt.music.search(queryId, { type: 'song' })
             browseId = extractAlbumFromSongSearch(search)
-            console.log(`[vs:album] Searched "${queryId}" (type:song) → browseId: ${browseId}`)
+            console.log(`[vs:album] Searched "${queryId}" (type:song) â†’ browseId: ${browseId}`)
           } catch (e) {
             console.warn('[vs:album] song-type search failed for:', queryId, e)
           }
         }
 
-        // Strategy 3: Generic search (no type filter) — broader results may contain the album
+        // Strategy 3: Generic search (no type filter) â€” broader results may contain the album
         if (!browseId) {
           try {
             const search = await yt.music.search(queryId)
             browseId = extractBrowseId(search)
-            console.log(`[vs:album] Searched "${queryId}" (generic) → browseId: ${browseId}`)
+            console.log(`[vs:album] Searched "${queryId}" (generic) â†’ browseId: ${browseId}`)
           } catch (e) {
             console.warn('[vs:album] generic search failed for:', queryId, e)
           }
@@ -936,13 +1025,13 @@ export function registerIpcHandlers(): void {
         if (!browseId && queryId.includes(' ')) {
           try {
             // Split on common separators and try the longer half
-            const parts = queryId.split(/\s*[-–—|•]\s*/)
+            const parts = queryId.split(/\s*[-â€“â€”|â€¢]\s*/)
             for (const part of parts) {
               if (part.trim().length < 3) continue
               const search = await yt.music.search(part.trim(), { type: 'album' })
               browseId = extractBrowseId(search)
               if (browseId) {
-                console.log(`[vs:album] Searched partial "${part.trim()}" → browseId: ${browseId}`)
+                console.log(`[vs:album] Searched partial "${part.trim()}" â†’ browseId: ${browseId}`)
                 break
               }
             }
@@ -1010,7 +1099,7 @@ export function registerIpcHandlers(): void {
           }
         }).filter((s: any) => s.youtubeId)
 
-      // Re-resolve album Art Track IDs → Song IDs for better audio quality.
+      // Re-resolve album Art Track IDs â†’ Song IDs for better audio quality.
       // Art Tracks (from getAlbum) have lower-quality audio than Song uploads.
       // STRICT matching: exact normalized title + artist match + duration within 5s.
       // Never fall back to an unmatched result.
@@ -1021,7 +1110,7 @@ export function registerIpcHandlers(): void {
             const searchQuery = `${track.title} ${track.artist || albumArtist}`
             const searchRes = await yt.music.search(searchQuery, { type: 'song' })
             
-            // Collect songs from all sections — skip DidYouMean/ShowingResultsFor
+            // Collect songs from all sections â€” skip DidYouMean/ShowingResultsFor
             let songs: any[] = []
             const allSections = (searchRes.contents as any[]) ?? []
             for (const sec of allSections) {
@@ -1062,11 +1151,11 @@ export function registerIpcHandlers(): void {
               return true
             })
 
-            // Extract ID from match — may be in .id, .video_id, or endpoint
+            // Extract ID from match â€” may be in .id, .video_id, or endpoint
             const matchId = match?.id ?? match?.video_id ?? match?.endpoint?.payload?.videoId
 
             if (matchId && matchId !== track.youtubeId) {
-              console.log(`[vs:album] Upgraded "${track.title}": ${track.youtubeId} → ${matchId}`)
+              console.log(`[vs:album] Upgraded "${track.title}": ${track.youtubeId} â†’ ${matchId}`)
               track.youtubeId = matchId
               upgradedCount++
             } else if (!match) {
@@ -1076,7 +1165,7 @@ export function registerIpcHandlers(): void {
               console.log(`[vs:album] NO MATCH for "${track.title}" (normalized: "${trackTitle}"). First result raw:`, JSON.stringify(rawInfo))
             }
           } catch (e) {
-            // Non-fatal — keep original Art Track ID
+            // Non-fatal â€” keep original Art Track ID
           }
         }))
         console.log(`[vs:album] Upgraded ${upgradedCount}/${tracks.length} tracks to Song IDs`)
@@ -1114,7 +1203,7 @@ export function registerIpcHandlers(): void {
         where: { youtubeId },
         data: { downloadPath: filePath, isDownloaded: true },
       }).catch(() => {
-        // Song might not be in DB yet — that's ok, cache is file-based
+        // Song might not be in DB yet â€” that's ok, cache is file-based
       })
       broadcastDownloadProgress(youtubeId, 100)
       return { ok: true, path: filePath }
@@ -1162,7 +1251,7 @@ export function registerIpcHandlers(): void {
       console.log(`[offline] Found ${tracks.length} tracks in playlist, ${toDownload.length} need downloading`)
 
       // Download sequentially (one at a time) to avoid overwhelming yt-dlp / YouTube
-      // This runs in the background — we return { ok: true } immediately.
+      // This runs in the background â€” we return { ok: true } immediately.
       ;(async () => {
         for (let i = 0; i < toDownload.length; i++) {
           const t = toDownload[i]
@@ -1171,7 +1260,7 @@ export function registerIpcHandlers(): void {
             const filePath = await downloadSong(t.youtubeId, (pct) => {
               broadcastDownloadProgress(t.youtubeId, pct)
             })
-            console.log(`[offline] Downloaded ${t.youtubeId} → ${filePath}`)
+            console.log(`[offline] Downloaded ${t.youtubeId} â†’ ${filePath}`)
             broadcastDownloadProgress(t.youtubeId, 100)
             await db.song.update({
               where: { youtubeId: t.youtubeId },
@@ -1208,32 +1297,100 @@ export function registerIpcHandlers(): void {
     return { ok: true, path: result.filePath }
   })
 
-  ipcMain.handle(IpcChannels.lyricsImport, async () => {
-    const win = BrowserWindow.getFocusedWindow() ?? undefined
-    const result = await dialog.showOpenDialog({
-      ...(win ? { window: win } : {}),
-      title: 'Import Lyrics',
-      filters: [
-        { name: 'LRC Lyrics', extensions: ['lrc'] },
-        { name: 'Text File', extensions: ['txt'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-      properties: ['openFile'],
-    } as any)
-    if (result.canceled || result.filePaths.length === 0) return { ok: false, lrcRaw: null }
-    const fs = await import('node:fs')
-    const lrcRaw = fs.readFileSync(result.filePaths[0], 'utf-8')
-    return { ok: true, lrcRaw }
+  ipcMain.handle(IpcChannels.lyricsImport, async (event) => {
+    console.log('[lyrics:import] Handler called')
+    const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+    console.log('[lyrics:import] Window:', win ? `found (id=${win.id})` : 'null')
+    try {
+      const result = await dialog.showOpenDialog({
+        ...(win ? { window: win } : {}),
+        title: 'Import Lyrics',
+        filters: [
+          { name: 'LRC Lyrics', extensions: ['lrc'] },
+          { name: 'Text File', extensions: ['txt'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      } as any)
+      console.log('[lyrics:import] Dialog result:', result.canceled ? 'canceled' : result.filePaths)
+      if (result.canceled || result.filePaths.length === 0) return { ok: false, lrcRaw: null }
+      const fs = await import('node:fs')
+      const lrcRaw = fs.readFileSync(result.filePaths[0], 'utf-8')
+      console.log('[lyrics:import] File read OK, length:', lrcRaw.length)
+      return { ok: true, lrcRaw }
+    } catch (err) {
+      console.error('[lyrics:import] Error:', err)
+      return { ok: false, lrcRaw: null }
+    }
   })
 
-  // ─── Gemini AI ───────────────────────────────────────────────
+  // --- Gemini AI ---
 
-  
-  ipcMain.handle(IpcChannels.getTrackViews, async (_evt, raw: unknown) => { const { youtubeId } = raw as { youtubeId: string }; try { const yt = await getInnertube(); const info = await yt.getBasicInfo(youtubeId); return info.basic_info.view_count || 0; } catch { return 0; } });
+  ipcMain.handle(IpcChannels.getTrackViews, async (_evt, raw: unknown) => {
+    const { youtubeId } = raw as { youtubeId: string }
+    try {
+      const yt = await getInnertube()
+      const info = await yt.getBasicInfo(youtubeId)
+      return info.basic_info.view_count || 0
+    } catch { return 0 }
+  })
 
   ipcMain.handle(IpcChannels.geminiSongStory, async (_evt, raw: unknown) => {
     const data = raw as { title: string; artist: string }
     const result = await generateSongStory(data.title ?? 'Unknown', data.artist ?? 'Unknown')
     return result
   })
+
+  // --- YouTube Music Explore (curated playlists, charts, trending) ---
+
+  ipcMain.handle(IpcChannels.exploreGetPlaylists, async () => {
+    try {
+      const yt = await getInnertube()
+      const explore = await yt.music.getExplore()
+
+      const sections: { title: string; playlists: any[] }[] = []
+
+      for (const section of explore.sections || []) {
+        const sec = section as any
+        const sectionTitle = sec.header?.title?.text || sec.title?.text || ''
+        if (!sectionTitle) continue
+        if (sectionTitle.toLowerCase().includes('moods') && sectionTitle.toLowerCase().includes('genres')) continue
+
+        const playlists: any[] = []
+        for (const item of sec.contents || []) {
+          const browseId = item.endpoint?.payload?.browseId || item.id
+          if (!browseId) continue
+
+          const title = item.title?.text || item.title || 'Unknown'
+          const subtitle = item.subtitle?.text || ''
+
+          let thumbnailUrl: string | null = null
+          const thumbArr = item.thumbnail?.contents || item.thumbnail || item.thumbnails
+          if (Array.isArray(thumbArr) && thumbArr.length > 0) {
+            const sorted = [...thumbArr].sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0))
+            thumbnailUrl = upscaleGoogleUrl(sorted[0]?.url) || null
+          } else if (thumbArr?.url) {
+            thumbnailUrl = upscaleGoogleUrl(thumbArr.url) || null
+          }
+
+          playlists.push({
+            browseId,
+            title,
+            subtitle,
+            thumbnailUrl,
+          })
+        }
+
+        if (playlists.length > 0) {
+          sections.push({ title: sectionTitle, playlists })
+        }
+      }
+
+      return sections
+    } catch (err) {
+      console.error('[vs:explore]', err)
+      return []
+    }
+  })
 }
+

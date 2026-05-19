@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Play, Plus, ArrowLeft } from 'lucide-react'
+import { Play, Plus, ArrowLeft, Video } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 
 export function ArtistAllSongsView({ artistId }: { artistId: string }) {
@@ -12,7 +13,9 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
   const playTrackNow = usePlayerStore(s => s.playTrackNow)
   const addToQueue = usePlayerStore(s => s.addToQueue)
   const setActiveView = useUIStore((s) => s.setActiveView)
-  const [activeTab, setActiveTab] = useState<'albums' | 'singles'>('albums')
+  const openMenu = useContextMenuStore(s => s.openMenu)
+  const loadPlaylist = usePlayerStore(s => s.loadPlaylist)
+  const [activeTab, setActiveTab] = useState<'albums' | 'singles' | 'videos'>('albums')
 
   useEffect(() => {
     async function load() {
@@ -46,16 +49,33 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
   
   const singles = artist.singles || []
   const albums = artist.albums || []
+  const videos = artist.videos || []
 
   const handleItemClick = (item: any) => {
     setActiveView(`album-${item.youtubeId}`)
   }
 
-  let displayTab = activeTab
-  if (displayTab === 'albums' && albums.length === 0 && singles.length > 0) displayTab = 'singles'
-  if (displayTab === 'singles' && singles.length === 0 && albums.length > 0) displayTab = 'albums'
+  const handleVideoClick = (video: any, idx: number) => {
+    if (videos.length > 1) {
+      loadPlaylist(videos, idx)
+    } else {
+      playTrackNow(video)
+    }
+  }
 
-  let currentList = displayTab === 'albums' ? albums : singles
+  let displayTab = activeTab
+  if (displayTab === 'albums' && albums.length === 0) {
+    displayTab = singles.length > 0 ? 'singles' : videos.length > 0 ? 'videos' : 'albums'
+  }
+  if (displayTab === 'singles' && singles.length === 0) {
+    displayTab = albums.length > 0 ? 'albums' : videos.length > 0 ? 'videos' : 'singles'
+  }
+  if (displayTab === 'videos' && videos.length === 0) {
+    displayTab = albums.length > 0 ? 'albums' : singles.length > 0 ? 'singles' : 'videos'
+  }
+
+  let currentList = displayTab === 'albums' ? albums : displayTab === 'singles' ? singles : videos
+  const isVideoTab = displayTab === 'videos'
 
   return (
     <div className='flex flex-col gap-6 animate-in fade-in duration-500'>
@@ -74,6 +94,7 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
         <div className='flex items-center gap-2'>
           {albums.length > 0 && <button onClick={() => setActiveTab('albums')} className={`px-5 py-2 rounded-full font-bold text-sm transition-all ${displayTab === 'albums' ? 'bg-theme-accent text-white shadow-md' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}>Albums</button>}
           {singles.length > 0 && <button onClick={() => setActiveTab('singles')} className={`px-5 py-2 rounded-full font-bold text-sm transition-all ${displayTab === 'singles' ? 'bg-theme-accent text-white shadow-md' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}>Singles & EPs</button>}
+          {videos.length > 0 && <button onClick={() => setActiveTab('videos')} className={`px-5 py-2 rounded-full font-bold text-sm transition-all ${displayTab === 'videos' ? 'bg-theme-accent text-white shadow-md' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}>Videos</button>}
         </div>
       </div>
 
@@ -87,17 +108,23 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
                <div 
                  key={`${track.youtubeId}-${i}-allsongs`}
                  className='group flex flex-col gap-3 rounded-2xl p-4 transition-all hover:bg-white/5 bg-theme-surface/30 border border-white/5 shadow-md relative cursor-pointer'
-                 onClick={() => handleItemClick(track)}
+                 onClick={() => isVideoTab ? handleVideoClick(track, i) : handleItemClick(track)}
+                 onContextMenu={isVideoTab ? (e) => openMenu(e, track) : undefined}
                >
-                 <div className='relative aspect-square w-full overflow-hidden rounded-xl bg-stone-800 shadow-lg'>
+                 <div className={`relative w-full overflow-hidden rounded-xl bg-stone-800 shadow-lg ${isVideoTab ? 'aspect-video' : 'aspect-square'}`}>
                    {track.thumbnailUrl && (
                      <img src={getHighResUrl(track.thumbnailUrl)} className='h-full w-full object-cover transition-transform duration-500 group-hover:scale-105' alt={track.title} onError={handleImgError} />
+                   )}
+                   {isVideoTab && (
+                     <div className='absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity'>
+                       <Play className='h-10 w-10 text-white drop-shadow-lg' fill='currentColor' />
+                     </div>
                    )}
                  </div>
                  <div className='flex flex-col min-w-0'>
                    <span className='truncate font-bold text-white/90 drop-shadow-sm group-hover:text-theme-cyan transition-colors'>{track.title}</span>
                    <span className='truncate text-sm text-theme-subtext mt-1'>
-                     {track.year || 'Unknown'}
+                     {isVideoTab ? (track.artist || artist.name) : (track.year || 'Unknown')}
                    </span>
                  </div>
                </div>

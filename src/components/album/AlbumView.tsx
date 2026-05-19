@@ -19,8 +19,12 @@ export function AlbumView({ albumId }: { albumId: string }) {
   const openMenu = useContextMenuStore(s => s.openMenu)
   const { savePlaylist, removePlaylist, isSaved } = useSavedPlaylistsStore()
 
-  const isYtmPlaylist = albumId.startsWith('VL') || albumId.startsWith('OLAK5uy_')
-  const saved = isSaved(albumId)
+  // Use the canonical ID from the API response (if loaded) so the same album
+  // is always identified consistently, regardless of how it was navigated to
+  // (search query string, MPRE browse ID, OLAK playlist ID, etc.)
+  const canonicalId = album?.id ?? album?.albumId ?? albumId
+  const isYtmPlaylist = canonicalId.startsWith('VL') || canonicalId.startsWith('OLAK5uy_')
+  const saved = isSaved(canonicalId)
 
   // Download state
   const [dlState, setDlState] = useState<'idle' | 'downloading' | 'done'>('idle')
@@ -190,10 +194,10 @@ export function AlbumView({ albumId }: { albumId: string }) {
         <button
           onClick={() => {
             if (saved) {
-              removePlaylist(albumId)
+              removePlaylist(canonicalId)
             } else {
               savePlaylist({
-                playlistId: albumId,
+                playlistId: canonicalId,
                 title: album.title,
                 author: album.artist || 'Unknown',
                 thumbnailUrl: album.thumbnailUrl,

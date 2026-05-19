@@ -1,6 +1,6 @@
 {
   "name": "Stanza",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "main": "dist-electron/main/index.js",
   "description": "Stanza — desktop music player.",
   "author": "Mohamed Abed",

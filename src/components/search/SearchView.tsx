@@ -188,6 +188,11 @@ export function SearchView() {
         if (result.configured && !result.error && (result.tracks.length > 0 || result.artists.length > 0)) {
           spotifyWorked = true
 
+          // Run YouTube searches in parallel to catch tracks and playlists that only exist on YT Music
+          // (e.g. music videos from independent/regional artists not on Spotify, curated playlists like "Top Egypt")
+          const ytMusicPromise = window.vibestream.searchMusic(query).catch(() => [] as YtSong[])
+          const ytPlaylistPromise = window.vibestream.searchPlaylists(query).catch(() => [] as YtPlaylist[])
+
           // Augment missing covers from YouTube
           const augmentedTracks = await Promise.all((result.tracks || []).map(async (t) => {
              if (!t.imageUrl) {
@@ -213,7 +218,24 @@ export function SearchView() {
              return a
           }))
 
-          setTracks(augmentedTracks)
+          // Merge YouTube-only tracks that Spotify didn't find
+          const ytMusics: YtSong[] = await ytMusicPromise
+          const spTitleSet = new Set(augmentedTracks.map(t => t.name.toLowerCase().trim()))
+          const ytOnlyTracks: SpTrack[] = ytMusics
+            .filter(m => !spTitleSet.has(m.title.toLowerCase().trim()))
+            .map(m => ({
+              spotifyId: m.youtubeId,
+              name: m.title,
+              artists: m.artist ?? 'Unknown',
+              album: m.album,
+              imageUrl: m.thumbnailUrl,
+              durationMs: (m.durationSeconds ?? 0) * 1000,
+              explicit: m.isExplicit,
+              previewUrl: null,
+              _youtubeId: m.youtubeId,
+            }))
+
+          setTracks([...augmentedTracks, ...ytOnlyTracks])
           // Deduplicate artists by name
           const spSeen = new Set<string>()
           const uniqueSpArtists = augmentedArtists.filter((a) => {
@@ -223,6 +245,11 @@ export function SearchView() {
             return true
           })
           setArtists(uniqueSpArtists)
+
+          // Set YouTube playlists (curated playlists like "Top Egypt", "Trending", etc.)
+          const ytPlaylists: YtPlaylist[] = await ytPlaylistPromise
+          setPlaylists(ytPlaylists)
+
           addSearchTerm(query)
         }
       } catch (spErr) {

@@ -71,6 +71,7 @@ export interface VibestreamPreload {
   getPlaylists: () => Promise<any[]>
   createPlaylist: (name: string) => Promise<any>
   renamePlaylist: (playlistId: string, name: string) => Promise<any>
+  updatePlaylistCover: (playlistId: string) => Promise<{ coverUrl: string | null }>
   deletePlaylist: (playlistId: string) => Promise<any>
   addTrackToPlaylist: (playlistId: string, youtubeId: string) => Promise<any>
   removeTrackFromPlaylist: (playlistId: string, youtubeId: string) => Promise<any>
@@ -106,6 +107,8 @@ export interface VibestreamPreload {
 
   getSongStory: (title: string, artist: string) => Promise<{ story: string; meaning: string; trivia: string }>
   getTrackViews: (youtubeId: string) => Promise<number>
+  // YouTube Music Explore
+  getExplorePlaylists: () => Promise<{ title: string; playlists: { browseId: string; title: string; subtitle: string; thumbnailUrl: string | null }[] }[]>
 }
 
 export {}

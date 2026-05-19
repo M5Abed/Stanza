@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('vibestream', {
     invoke<any>(IpcChannels.playlistsRemoveTrack, { playlistId, youtubeId }),
   renamePlaylist: (playlistId: string, name: string) =>
     invoke<any>(IpcChannels.playlistsRename, { playlistId, name }),
+  updatePlaylistCover: (playlistId: string) =>
+    invoke<{ coverUrl: string | null }>(IpcChannels.playlistsUpdateCover, { playlistId }),
   deletePlaylist: (playlistId: string) =>
     invoke<any>(IpcChannels.playlistsDelete, { playlistId }),
   setFullscreen: (isFullscreen: boolean) =>
@@ -137,4 +139,7 @@ contextBridge.exposeInMainWorld('vibestream', {
     invoke<{ story: string; meaning: string; trivia: string }>(IpcChannels.geminiSongStory, { title, artist }),
   getTrackViews: (youtubeId: string) =>
     invoke<number>(IpcChannels.getTrackViews, { youtubeId }),
+  // YouTube Music Explore
+  getExplorePlaylists: () =>
+    invoke<{ title: string; playlists: { browseId: string; title: string; subtitle: string; thumbnailUrl: string | null }[] }[]>(IpcChannels.exploreGetPlaylists),
 })

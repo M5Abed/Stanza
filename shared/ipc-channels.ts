@@ -16,6 +16,7 @@ export const IpcChannels = {
   playlistsAddTrack: 'vs:db:playlists:add-track',
   playlistsRemoveTrack: 'vs:db:playlists:remove-track',
   playlistsRename: 'vs:db:playlists:rename',
+  playlistsUpdateCover: 'vs:db:playlists:update-cover',
   playlistsDelete: 'vs:db:playlists:delete',
   windowSetFullscreen: 'vs:window:set-fullscreen',
   thumbarRegisterIcons: 'vs:thumbar:register-icons',
@@ -52,4 +53,6 @@ export const IpcChannels = {
 
   geminiSongStory: 'vs:gemini:song-story',
   getTrackViews: 'vs:track:get-views',
+  /** YouTube Music explore — curated playlists (charts, trending, etc.) */
+  exploreGetPlaylists: 'vs:explore:get-playlists',
 } as const
