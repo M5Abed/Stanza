@@ -18,27 +18,6 @@ Stanza is a modern, lightweight, and incredibly fast desktop music player powere
 - **Modern UI:** Designed with Framer Motion and TailwindCSS for a high-end, dynamic user experience.
 - **Persistent Database:** Uses Prisma to cache player data and save your preferences securely.
 
----
-
-## 📝 Update Logs
-
-### Version 2.2
-- **Library Album Management:** Enabled "Save to Library" functionality for all album types, complete with updated Sidebar UI to clearly distinguish between saved Albums and Playlists.
-- **Audio Performance & Stability:** Eliminated audio playback stuttering by applying OS-level Chromium background flags, optimizing stream-caching pipelines, and proactively prefetching upcoming queue items.
-- **AI Integration:** Replaced the experimental AI DJ with the new "Song Story" feature, powered by Google Gemini, providing behind-the-scenes facts, hidden meanings, and trivia about any song.
-- **Offline Download Fixes:** Resolved a bug where the "Download All" button in the Liked Songs playlist failed to correctly queue all tracks for offline downloading.
-
-### Version 2.1
-- **Performance & Optimization:** Significantly improved app performance and reduced background power consumption.
-- **Floating Lyrics Engine:** Introduced a new detachable, floating lyrics window with top-pinning and resize capabilities.
-- **YouTube Music Playlists:** Added native support for searching, viewing, and saving external YouTube Music playlists directly to your local library.
-- **Enhanced Artist Resolution:** Resolved bugs causing duplicate artist profiles and fixed routing issues within featured artist sections.
-- **Offline Mode Improvements:** Fixed the "Download All" track queue logic for local playlists, ensuring reliable batch downloading.
-- **Playback Stability:** Refactored and stabilized the shuffle/random playback functionality for queue management.
-- **UI & UX Refinements:** Reorganized the lyrics editor by moving the import/export controls to the edit screen, swapping the icons for clarity.
-- **Mascot Integration:** Added the Pink Panther as a subtle watermark background to the main app interface.
-
----
 
 ## 🔌 APIs & External Services
 
