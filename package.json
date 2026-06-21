@@ -27,7 +27,7 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "@google/genai": "^1.51.0",
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^7.8.0",
     "discord-rpc": "^4.0.1",
     "dotenv": "^17.4.2",
     "electron-updater": "^6.3.9",
