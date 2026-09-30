@@ -1,5 +1,5 @@
 import { app, protocol } from 'electron'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -12,11 +12,16 @@ const execFileAsync = promisify(execFile)
 /** Resolve bundled yt-dlp binary — works cross-platform in dev and packaged mode. */
 function getYtDlpPath(): string {
   const isWin = process.platform === 'win32'
-  const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp_macos'
+  const binName = isWin ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp'
 
-  const binPath = app.isPackaged
+  const bundledPath = app.isPackaged
     ? path.join(process.resourcesPath, binName)
     : path.join(app.getAppPath(), 'resources', binName)
+
+  // Linux users install yt-dlp through their distribution package manager.
+  const binPath = process.platform === 'linux' && !fs.existsSync(bundledPath)
+    ? 'yt-dlp'
+    : bundledPath
 
   // On macOS/Linux, ensure the binary is executable (extraFiles can lose +x)
   if (!isWin) {
@@ -310,4 +315,3 @@ export function registerVibestreamProtocolHandler(): void {
 export function playbackUrlForYoutubeId(youtubeId: string): string {
   return `${SCHEME}://audio/${youtubeId}`
 }
-

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2, Music2, Plus, Search, UserRound, Play, Clock, X, ListMusic } from 'lucide-react'
 import { usePlayerStore, type QueueTrack } from '@/stores/usePlayerStore'

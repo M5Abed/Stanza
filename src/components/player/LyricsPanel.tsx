@@ -10,12 +10,10 @@ import {
   SkipForward,
   Repeat,
   Repeat1,
-  Shuffle,
   Volume2,
   Edit2,
   Save,
   Plus,
-  Minus,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -317,9 +315,7 @@ export function LyricsPanel() {
   const volume = usePlayerStore((s) => s.volume)
   const setVolume = usePlayerStore((s) => s.setVolume)
 
-  const shuffle = usePlayerStore((s) => s.shuffle)
   const repeat = usePlayerStore((s) => s.repeat)
-  const setShuffle = usePlayerStore((s) => s.setShuffle)
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat)
 
   const dur = useMemo(() => (durationSec > 0 ? durationSec : current?.durationSeconds ?? 0), [current?.durationSeconds, durationSec])
@@ -663,7 +659,6 @@ export function LyricsPanel() {
     } catch (err) {
       console.error('[import] Import failed:', err)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current])
 
   // Handle OS Fullscreen Request
@@ -679,10 +674,6 @@ export function LyricsPanel() {
       }
     }
   }, [visible])
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    requestSeek(Number(e.target.value))
-  }
 
   console.log('[RENDER] visible:', visible, 'loading:', loading, 'lyricsData:', lyricsData ? `${lyricsData.length} lines` : 'null', 'isEditing:', isEditing)
 
@@ -860,6 +851,11 @@ export function LyricsPanel() {
         {/* Edit Lyrics Button (top-right of lyrics area) */}
         {!isEditing && lyricsData && (
           <div className='absolute top-8 right-24 z-20 flex items-center gap-2'>
+            {source !== 'none' && (
+              <span className='px-3 py-1.5 bg-white/10 rounded-full text-xs font-semibold text-white/70 uppercase tracking-wider'>
+                {source}
+              </span>
+            )}
             {/* Pop-out floating lyrics */}
             <button
               type='button'

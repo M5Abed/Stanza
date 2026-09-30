@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useRadioStore } from '@/stores/useRadioStore'
@@ -158,7 +158,6 @@ export function PlayerAudioBridge() {
       howlRef.current = null
     }
   // Only re-create the Howl when the actual track changes — callback refs keep this stable
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.youtubeId])
 
   useEffect(() => {

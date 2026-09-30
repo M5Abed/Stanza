@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   Heart,
-  Mic2,
   Pause,
   Play,
   Repeat,
@@ -20,12 +19,12 @@ import {
 } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'
-import { useUIStore, AppView } from '@/stores/useUIStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { LyricsPanel } from './LyricsPanel'
 import { SongStory } from './SongStory'
 import { motion } from 'framer-motion'
-import { getHighResUrl, handleImgError } from '@/utils/image'
+import { getHighResUrl } from '@/utils/image'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { ArtistLinks } from '@/components/ui/ArtistLinks'
 
@@ -79,10 +78,6 @@ export function PlayerBar() {
     } else {
       document.exitFullscreen().catch(() => {})
     }
-  }
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setVolume(Number(e.target.value))
   }
 
   const handleVolumeWheel = (e: React.WheelEvent<HTMLDivElement>) => {

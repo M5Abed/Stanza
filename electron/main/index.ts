@@ -13,7 +13,10 @@ import { setupDiscordRpc } from './discord-rpc'
 import { ensureBaseSchema } from './schema-bootstrap'
 import { ensureOfflineDirs, evictLRUCache } from './audio-cache'
 import { scheduleYtDlpUpdate } from './ytdlp-updater'
+import { initMainSentry } from './sentry'
 import { IpcChannels } from '../../shared/ipc-channels'
+
+initMainSentry()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -35,7 +38,11 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
-if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
+// Mesa can abort while Electron's GPU process creates EGL fences on Linux.
+// Keep GPU acceleration on Windows and macOS; it is not required for audio playback.
+if (process.platform === 'linux' || os.release().startsWith('6.1')) {
+  app.disableHardwareAcceleration()
+}
 
 if (process.platform === 'win32') app.setAppUserModelId('com.mohamedabed.stanza')
 app.setName('Stanza')
@@ -86,7 +93,7 @@ function setupFloatingLyricsIpc() {
         preload,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
         backgroundThrottling: false,
       },
     })
@@ -133,7 +140,7 @@ function setupFloatingLyricsIpc() {
 async function createWindow(): Promise<void> {
   win = new BrowserWindow({
     title: 'Stanza',
-    icon: path.join(process.env.VITE_PUBLIC, 'icon.ico'),
+    icon: path.join(process.env.VITE_PUBLIC, process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     backgroundColor: '#09090b',
     autoHideMenuBar: true,
     minWidth: 900,

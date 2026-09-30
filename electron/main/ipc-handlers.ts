@@ -49,7 +49,7 @@ function getArtistName(tItem: any): string {
 /** Normalize a string for fuzzy matching (lowercase, strip parens/brackets, trim) */
 function normalize(s: string | null | undefined): string {
   if (!s) return ''
-  return s.toLowerCase().replace(/[\(\)\[\]]/g, '').replace(/\s+/g, ' ').trim()
+  return s.toLowerCase().replace(/[()[\]]/g, '').replace(/\s+/g, ' ').trim()
 }
 
 export function registerIpcHandlers(): void {
@@ -542,8 +542,8 @@ export function registerIpcHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle(IpcChannels.windowSetFullscreen, (event, isFullscreen: boolean) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+  ipcMain.handle(IpcChannels.windowSetFullscreen, (_event, isFullscreen: boolean) => {
+    const win = BrowserWindow.fromWebContents(_event.sender)
     if (win) {
       win.setFullScreen(isFullscreen)
     }
@@ -552,7 +552,7 @@ export function registerIpcHandlers(): void {
   // ---- Thumbar Controls ---- //
   let thumbarIcons: Record<string, Electron.NativeImage> | null = null
 
-  ipcMain.on(IpcChannels.thumbarRegisterIcons, (event, iconsData: Record<string, string>) => {
+  ipcMain.on(IpcChannels.thumbarRegisterIcons, (_event, iconsData: Record<string, string>) => {
     thumbarIcons = {
       play: nativeImage.createFromDataURL(iconsData.play),
       pause: nativeImage.createFromDataURL(iconsData.pause),
@@ -561,9 +561,9 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.on(IpcChannels.thumbarUpdate, (event, { isPlaying }) => {
+  ipcMain.on(IpcChannels.thumbarUpdate, (_event, { isPlaying }) => {
     if (!thumbarIcons) return
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = BrowserWindow.fromWebContents(_event.sender)
     if (!win) return
 
     win.setThumbarButtons([
@@ -616,10 +616,8 @@ export function registerIpcHandlers(): void {
       }
       return results
     }
-
     const db = getPrisma()
     const songInfo = await db.song.findUnique({ where: { youtubeId } })
-    const seedArtist = songInfo?.artist?.toLowerCase() || ''
 
     const finalTracks: any[] = []
     const seenIds = new Set<string>([youtubeId])
@@ -1079,7 +1077,7 @@ export function registerIpcHandlers(): void {
         if (spCover) finalThumb = spCover
       } catch { /* Spotify unavailable */ }
 
-      const tracks = (album.contents || []).map((tItem: any, i: number) => {
+      const tracks = (album.contents || []).map((tItem: any, _i: number) => {
           let yid = tItem.videoId || tItem.id || tItem.endpoint?.payload?.videoId || tItem.play_endpoint?.payload?.videoId;
           if (!yid && tItem.flex_columns?.[0]?.title?.runs?.[0]?.endpoint?.payload?.videoId) {
             yid = tItem.flex_columns[0].title.runs[0].endpoint.payload.videoId;

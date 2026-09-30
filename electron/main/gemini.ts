@@ -4,50 +4,10 @@ function getApiKey(): string | null {
   return process.env.GEMINI_API_KEY || null
 }
 
-interface TrackInfo {
-  title: string
-  artist: string | null
-}
-
 interface SongStoryResult {
   story: string
   meaning: string
   trivia: string
-}
-
-const FALLBACK_DJ = 'منورين يا جماعة.. مكملين معاكم بأجمل الأغاني، ويلا بينا على التراك الجاي'
-
-// Helper: Convert 16-bit PCM to WAV
-function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000, numChannels: number = 1): Uint8Array {
-  const byteRate = sampleRate * numChannels * 2
-  const blockAlign = numChannels * 2
-  const dataSize = pcmData.length
-  const buffer = new ArrayBuffer(44 + dataSize)
-  const view = new DataView(buffer)
-
-  const writeString = (offset: number, string: string) => {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i))
-    }
-  }
-
-  writeString(0, 'RIFF')
-  view.setUint32(4, 36 + dataSize, true)
-  writeString(8, 'WAVE')
-  writeString(12, 'fmt ')
-  view.setUint32(16, 16, true)
-  view.setUint16(20, 1, true) // PCM
-  view.setUint16(22, numChannels, true)
-  view.setUint32(24, sampleRate, true)
-  view.setUint32(28, byteRate, true)
-  view.setUint16(32, blockAlign, true)
-  view.setUint16(34, 16, true) // 16 bits per sample
-  writeString(36, 'data')
-  view.setUint32(40, dataSize, true)
-
-  const out = new Uint8Array(buffer)
-  out.set(pcmData, 44)
-  return out
 }
 
 

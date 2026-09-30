@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Plus, Play } from 'lucide-react'
 import { useRadioStore } from '@/stores/useRadioStore'
 import { usePlayerStore } from '@/stores/usePlayerStore'
@@ -9,7 +8,6 @@ export function RadioView() {
   const isFetching = useRadioStore(s => s.isFetching)
   const isRadioEnabled = useRadioStore(s => s.isRadioEnabled)
   const toggleRadio = useRadioStore(s => s.toggleRadio)
-  const fetchRecommendations = useRadioStore(s => s.fetchRecommendations)
 
   const queue = usePlayerStore(s => s.queue)
   const currentIndex = usePlayerStore(s => s.currentIndex)

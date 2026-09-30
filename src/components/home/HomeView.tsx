@@ -18,16 +18,12 @@ interface ExploreSection {
 }
 
 export function HomeView() {
-  const queue = usePlayerStore(s => s.queue)
-  const currentIndex = usePlayerStore(s => s.currentIndex)
   const history = usePlayerStore(s => s.history)
-  const playQueueIndex = usePlayerStore(s => s.playQueueIndex)
   const playTrackNow = usePlayerStore(s => s.playTrackNow)
   const addToQueue = usePlayerStore(s => s.addToQueue)
   const loadPlaylist = usePlayerStore(s => s.loadPlaylist)
   const repeat = usePlayerStore(s => s.repeat)
   const suggestions = useRadioStore(s => s.suggestions)
-  const fetchRecommendations = useRadioStore(s => s.fetchRecommendations)
   const openMenu = useContextMenuStore(s => s.openMenu)
   const setActiveView = useUIStore(s => s.setActiveView)
 

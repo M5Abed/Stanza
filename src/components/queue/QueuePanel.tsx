@@ -1,7 +1,7 @@
 import { Trash2, Play } from 'lucide-react'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { usePlayerStore, type QueueTrack } from '@/stores/usePlayerStore'
+import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useRadioStore } from '@/stores/useRadioStore'
 import { getHighResUrl, handleImgError } from '@/utils/image'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Heart, ListPlus, Download, User, Disc, PlaySquare, Music2, Share2 } from 'lucide-react'
+import { Heart, ListPlus, Download, User, Disc, PlaySquare, Music2 } from 'lucide-react'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { usePlaylistsStore } from '@/stores/usePlaylistsStore'

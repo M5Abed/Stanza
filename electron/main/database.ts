@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { app } from 'electron'
 import prismaPkg from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'

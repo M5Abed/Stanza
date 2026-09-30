@@ -1,18 +1,16 @@
 import { app, BrowserWindow } from 'electron'
 import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDownloadsDir } from './audio-cache'
 
-const execFileAsync = promisify(execFile)
-
 function getYtDlpPath(): string {
   const isWin = process.platform === 'win32'
-  const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp_macos'
+  const binName = isWin ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp'
   const binPath = app.isPackaged
     ? path.join(process.resourcesPath, binName)
     : path.join(app.getAppPath(), 'resources', binName)
+  if (process.platform === 'linux' && !fs.existsSync(binPath)) return 'yt-dlp'
   if (!isWin) {
     try { fs.chmodSync(binPath, 0o755) } catch { /* */ }
   }
@@ -38,7 +36,7 @@ export async function downloadSong(
       '--no-warnings',
       '--newline', // progress on new lines
       ytUrl,
-    ], { timeout: 120_000 }, (err, stdout, stderr) => {
+    ], { timeout: 120_000 }, (err) => {
       if (err) {
         reject(err)
         return

@@ -32,7 +32,6 @@ export const useRadioStore = create<RadioState>()(
         }
       },
       setRadioEnabled: (e) => {
-        const state = get()
         set({ isRadioEnabled: e })
         if (e) {
           usePlayerStore.setState({ repeat: 'off' })

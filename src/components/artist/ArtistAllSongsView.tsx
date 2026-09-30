@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Play, Plus, ArrowLeft, Video } from 'lucide-react'
+import { Play, ArrowLeft } from 'lucide-react'
 import { usePlayerStore } from '@/stores/usePlayerStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useContextMenuStore } from '@/stores/useContextMenuStore'
@@ -11,7 +11,6 @@ export function ArtistAllSongsView({ artistId }: { artistId: string }) {
   const [error, setError] = useState<string | null>(null)
   
   const playTrackNow = usePlayerStore(s => s.playTrackNow)
-  const addToQueue = usePlayerStore(s => s.addToQueue)
   const setActiveView = useUIStore((s) => s.setActiveView)
   const openMenu = useContextMenuStore(s => s.openMenu)
   const loadPlaylist = usePlayerStore(s => s.loadPlaylist)

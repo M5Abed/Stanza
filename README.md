@@ -487,6 +487,18 @@ User opens lyrics for a track
 
 ## 📥 Installation
 
+### Omarchy / Arch Linux
+
+Download the `Stanza_<version>_linux.AppImage` release, then install the `yt-dlp` runtime dependency and launch it:
+
+```bash
+sudo pacman -S yt-dlp
+chmod +x Stanza_*_linux.AppImage
+./Stanza_*_linux.AppImage
+```
+
+To build the Linux AppImage from source on Linux, install `yt-dlp` first, then run `npm install` and `npm run release:linux`. The artifact is written under `release/v<version>/`.
+
 Because Stanza is packaged securely, you **do not** need to be a developer, and you don't need to install Node.js to use it!
 
 ### Requirements

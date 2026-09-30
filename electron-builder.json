@@ -2,15 +2,22 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.mohamedabed.stanza",
   "productName": "Stanza",
-  "buildVersion": "2.2",
+  "buildVersion": "${version}",
   "asar": true,
   "asarUnpack": [
     "node_modules/.prisma/**/*",
     "node_modules/@prisma/client/**/*"
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "M5Abed",
+      "repo": "Stanza"
+    }
+  ],
   "forceCodeSigning": false,
   "directories": {
-    "output": "release/v2.2"
+    "output": "release/v${version}"
   },
   "files": [
     "dist-electron",
@@ -28,25 +35,23 @@
     {
       "from": "node_modules/@prisma/client",
       "to": "node_modules/@prisma/client"
-    },
-    {
-      "from": "resources/yt-dlp.exe",
-      "to": "yt-dlp.exe"
-    },
-    {
-      "from": "resources/yt-dlp_macos",
-      "to": "yt-dlp_macos"
     }
   ],
   "mac": {
-    "artifactName": "${productName}_2.2_mac.${ext}",
+    "artifactName": "${productName}_${version}_mac.${ext}",
     "target": [
       {
         "target": "zip",
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "build/icon.png"
+    "icon": "build/icon.png",
+    "extraResources": [
+      {
+        "from": "resources/yt-dlp_macos",
+        "to": "yt-dlp_macos"
+      }
+    ]
   },
   "win": {
     "target": [
@@ -56,9 +61,21 @@
       }
     ],
     "icon": "build/icon.ico",
-    "artifactName": "${productName}_2.2.${ext}",
+    "artifactName": "${productName}_${version}.${ext}",
+    "extraResources": [
+      {
+        "from": "resources/yt-dlp.exe",
+        "to": "yt-dlp.exe"
+      }
+    ],
     "sign": null,
     "signDlls": false
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "category": "AudioVideo",
+    "icon": "build/icon.png",
+    "artifactName": "${productName}_${version}_linux.${ext}"
   },
   "nsis": {
     "oneClick": false,

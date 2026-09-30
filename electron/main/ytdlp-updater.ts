@@ -8,7 +8,8 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 function getYtDlpPath(): string {
   const isWin = process.platform === 'win32'
-  const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp_macos'
+  const binName = isWin ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp'
+  if (process.platform === 'linux') return 'yt-dlp'
   return app.isPackaged
     ? path.join(process.resourcesPath, binName)
     : path.join(app.getAppPath(), 'resources', binName)
@@ -16,6 +17,8 @@ function getYtDlpPath(): string {
 
 /** Check if we should update (max once per 24h) and run yt-dlp -U in background */
 export function scheduleYtDlpUpdate(): void {
+  // Linux uses the distribution-managed yt-dlp package; leave updates to pacman.
+  if (process.platform === 'linux') return
   // Wait 30s after startup to avoid slowing boot
   setTimeout(() => {
     try {

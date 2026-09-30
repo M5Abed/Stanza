@@ -15,7 +15,6 @@ export function AlbumView({ albumId }: { albumId: string }) {
   const current = usePlayerStore((s) => s.queue[s.currentIndex])
   const loadPlaylist = usePlayerStore((s) => s.loadPlaylist)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
-  const setActiveView = useUIStore((s) => s.setActiveView)
   const openMenu = useContextMenuStore(s => s.openMenu)
   const { savePlaylist, removePlaylist, isSaved } = useSavedPlaylistsStore()
 
