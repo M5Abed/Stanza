@@ -34,6 +34,10 @@ yarn.lock
 
 /generated/prisma
 
+# Local audit reports
+PROJECT_AUDIT_REPORT.md
+PROJECT_AUDIT_REPORT.pdf
+
 # SQLite (dev)
 dev.db
 dev.db-journal
