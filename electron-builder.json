@@ -2,7 +2,6 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.mohamedabed.stanza",
   "productName": "Stanza",
-  "buildVersion": "${version}",
   "asar": true,
   "asarUnpack": [
     "node_modules/.prisma/**/*",
