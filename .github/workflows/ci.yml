@@ -42,4 +42,4 @@ jobs:
 
       - name: Build Electron package (optional)
         if: github.ref == 'refs/heads/main'
-        run: npm run release
+        run: npm run release -- --publish never
